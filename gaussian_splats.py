@@ -107,96 +107,140 @@ def load_ply_file(ply_file_path: Path, center: bool = False) -> SplatFile:
         "covariances": covariances,
     }
 
+# def update_centers(centers: np.ndarray, t: float) -> np.ndarray:
+#         """Input prompt:
+#         Given an ndarray "points" of size [N, 3] centered at the origin (0,0,0), I want 
+#         you to write me a python function with the signature "def update_points(points: 
+#         np.ndarray, t: float) -> np.ndarray:". The function should translate the given 
+#         points based on a time parameter t. Over time this should create an animation 
+#         that looks like the point cloud explodes and falls down due to gravity. Make 
+#         sure the animation looks as realistic and cool as possible and not like a 
+#         computer simulation.
+#         """
+#         gravity = np.array([0, 0, -9.81])
+#         damping = 0.98
+#         np.random.seed(0)
+#         initial_velocities = np.random.uniform(-5, 5, size=centers.shape)
+#         velocities = initial_velocities * damping ** t + gravity * t
+#         return centers + velocities * t
+
+# def update_rgbs(rgbs: np.ndarray, t: float) -> np.ndarray:
+#     """Input prompt:
+#     You are given an ndarray "rgbs" of shape [N, 3]. The values are floats in between
+#     0.0 and 1.0. The ndarray belongs to a gaussian splatting model. I want you to write
+#     me a python function with the signature
+#     "def update_rgbs(rgbs:  np.ndarray, t: float) -> np.ndarray:".
+#     The function should change the given rgb values based on a time parameter t which
+#     can also be between 0.0 and 1.0. Over time this should create an animation.
+#     The centers and opacities are already updated correctly over time. The animation can
+#     be described as follows: "The object explodes and falls down due to gravity." Make
+#     sure the animation looks as realistic and cool as possible and not like a  computer
+#     simulation.
+#     """
+#     # Ensure t is clamped between 0.0 and 1.0
+#     t = np.clip(t, 0.0, 1.0)
+
+#     # Simulate the "explosion" phase (0.0 <= t <= 0.5)
+#     if t <= 0.5:
+#         # Scale the brightness to peak at t = 0.5
+#         brightness = np.interp(t, [0.0, 0.5], [1.0, 2.0])
+#         colors = rgbs * brightness
+#         # Introduce some fiery hues (shift towards red and yellow)
+#         colors[:, 0] = np.clip(colors[:, 0] * 1.2, 0.0, 1.0)  # Enhance red
+#         colors[:, 1] = np.clip(colors[:, 1] * 0.8, 0.0, 1.0)  # Slightly dampen green
+#         colors[:, 2] = np.clip(colors[:, 2] * 0.5, 0.0, 1.0)  # Strongly dampen blue
+    
+#     # Simulate the "falling and cooling" phase (0.5 < t <= 1.0)
+#     else:
+#         # Dim the colors gradually as t progresses
+#         brightness = np.interp(t, [0.5, 1.0], [2.0, 0.5])
+#         colors = rgbs * brightness
+#         # Shift hues towards blue and reduce intensity
+#         colors[:, 0] = np.clip(colors[:, 0] * 0.7, 0.0, 1.0)  # Reduce red
+#         colors[:, 1] = np.clip(colors[:, 1] * 0.9, 0.0, 1.0)  # Slightly reduce green
+#         colors[:, 2] = np.clip(colors[:, 2] * 1.3, 0.0, 1.0)  # Enhance blue
+
+#     # Normalize the colors back to the [0.0, 1.0] range
+#     colors = np.clip(colors, 0.0, 1.0)
+
+#     return colors
+
+# def update_opacities(opacities: np.ndarray, t: float) -> np.ndarray:
+#     """Input prompt:
+#     You are given an ndarray "opacities" of shape [N, 1]. The values are floats in
+#     between 0.0 and 1.0. The ndarray belongs do a gaussian splatting model. I want you
+#     to write me a python function with the signature
+#     "def update_opacities(opacities:  np.ndarray, t: float) -> np.ndarray:".
+#     The function should change the given opacity values based on a time parameter t
+#     which can also be between 0.0 and 1.0. Over time this should create an animation.
+#     The centers and rgbs are already updated correctly over time. The animation can be
+#     described as follows: "The object explodes and falls down due to gravity." Make sure
+#     the animation looks as realistic and cool as possible and not like a  computer
+#     simulation.
+#     """
+#     N = opacities.shape[0]
+
+#     # Random variations to make the effect more natural
+#     random_variation = np.random.uniform(0.8, 1.2, size=(N, 1))
+
+#     # Explosion phase: opacity spikes up
+#     explosion_opacity = np.clip((1 - t) * np.random.uniform(0.8, 1.0, size=(N, 1)), 0.0, 1.0)
+
+#     # Decay phase: opacity fades with time
+#     decay_factor = np.exp(-5 * t)  # Exponential decay for realism
+#     decay_opacity = decay_factor * random_variation
+
+#     # Combine the phases: fade from explosion to decay
+#     updated_opacities = explosion_opacity * (1 - t) + decay_opacity * t
+
+#     # Ensure opacities are within the valid range [0.0, 1.0]
+#     updated_opacities = np.clip(updated_opacities, 0.0, 1.0)
+
+#     return updated_opacities
+
 def update_centers(centers: np.ndarray, t: float) -> np.ndarray:
-        """Input prompt:
-        Given an ndarray "points" of size [N, 3] centered at the origin (0,0,0), I want 
-        you to write me a python function with the signature "def update_points(points: 
-        np.ndarray, t: float) -> np.ndarray:". The function should translate the given 
-        points based on a time parameter t. Over time this should create an animation 
-        that looks like the point cloud explodes and falls down due to gravity. Make 
-        sure the animation looks as realistic and cool as possible and not like a 
-        computer simulation.
-        """
-        gravity = np.array([0, 0, -9.81])
-        damping = 0.98
-        np.random.seed(0)
-        initial_velocities = np.random.uniform(-5, 5, size=centers.shape)
-        velocities = initial_velocities * damping ** t + gravity * t
-        return centers + velocities * t
+    downward_drift = -0.5 * t * centers[:, 1:2]
+    lateral_spread = 0.2 * t * (centers[:, [0, 2]] - np.mean(centers[:, [0, 2]], axis=0))
+    lateral_spread = np.hstack([lateral_spread[:, 0:1], np.zeros((centers.shape[0], 1)), lateral_spread[:, 1:2]])
+    random_oscillation = np.random.uniform(-0.05, 0.05, centers.shape) * (1 - t)
+    heights = centers[:, 1]
+    speed_variation = 1 + (1 - heights / (np.max(heights) + 1e-6)) * t
+    updated_centers = centers + downward_drift + lateral_spread + random_oscillation
+    updated_centers *= speed_variation[:, np.newaxis]
+    tapering_factor = np.clip(1 - t, 0.1, 1.0)
+    updated_centers = updated_centers * tapering_factor
+    return updated_centers
 
 def update_rgbs(rgbs: np.ndarray, t: float) -> np.ndarray:
-    """Input prompt:
-    You are given an ndarray "rgbs" of shape [N, 3]. The values are floats in between
-    0.0 and 1.0. The ndarray belongs to a gaussian splatting model. I want you to write
-    me a python function with the signature
-    "def update_rgbs(rgbs:  np.ndarray, t: float) -> np.ndarray:".
-    The function should change the given rgb values based on a time parameter t which
-    can also be between 0.0 and 1.0. Over time this should create an animation.
-    The centers and opacities are already updated correctly over time. The animation can
-    be described as follows: "The object explodes and falls down due to gravity." Make
-    sure the animation looks as realistic and cool as possible and not like a  computer
-    simulation.
-    """
-    # Ensure t is clamped between 0.0 and 1.0
-    t = np.clip(t, 0.0, 1.0)
+    darkening_factor = 1 - t
+    rgbs = rgbs * (0.7 + 0.3 * darkening_factor)
 
-    # Simulate the "explosion" phase (0.0 <= t <= 0.5)
-    if t <= 0.5:
-        # Scale the brightness to peak at t = 0.5
-        brightness = np.interp(t, [0.0, 0.5], [1.0, 2.0])
-        colors = rgbs * brightness
-        # Introduce some fiery hues (shift towards red and yellow)
-        colors[:, 0] = np.clip(colors[:, 0] * 1.2, 0.0, 1.0)  # Enhance red
-        colors[:, 1] = np.clip(colors[:, 1] * 0.8, 0.0, 1.0)  # Slightly dampen green
-        colors[:, 2] = np.clip(colors[:, 2] * 0.5, 0.0, 1.0)  # Strongly dampen blue
-    
-    # Simulate the "falling and cooling" phase (0.5 < t <= 1.0)
-    else:
-        # Dim the colors gradually as t progresses
-        brightness = np.interp(t, [0.5, 1.0], [2.0, 0.5])
-        colors = rgbs * brightness
-        # Shift hues towards blue and reduce intensity
-        colors[:, 0] = np.clip(colors[:, 0] * 0.7, 0.0, 1.0)  # Reduce red
-        colors[:, 1] = np.clip(colors[:, 1] * 0.9, 0.0, 1.0)  # Slightly reduce green
-        colors[:, 2] = np.clip(colors[:, 2] * 1.3, 0.0, 1.0)  # Enhance blue
+    pulsation = 0.5 + 0.5 * np.sin(2 * np.pi * (t + np.linspace(0, 1, rgbs.shape[0])))
+    rgbs[:, :] = rgbs * pulsation[:, np.newaxis]
 
-    # Normalize the colors back to the [0.0, 1.0] range
-    colors = np.clip(colors, 0.0, 1.0)
+    patch_factor = np.random.uniform(0.8, 1.0, size=rgbs.shape[0])
+    fading = (1 - t**2)
+    rgbs[:, :] = rgbs * patch_factor[:, np.newaxis] * fading
 
-    return colors
+    molten_core = np.random.choice([0, 1], size=rgbs.shape[0], p=[0.9, 0.1])
+    molten_color = np.array([1.0, 0.3, 0.0])
+    rgbs = np.where(molten_core[:, np.newaxis] == 1, rgbs + molten_color * t * 0.2, rgbs)
+
+    return np.clip(rgbs, 0.0, 1.0)
 
 def update_opacities(opacities: np.ndarray, t: float) -> np.ndarray:
-    """Input prompt:
-    You are given an ndarray "opacities" of shape [N, 1]. The values are floats in
-    between 0.0 and 1.0. The ndarray belongs do a gaussian splatting model. I want you
-    to write me a python function with the signature
-    "def update_opacities(opacities:  np.ndarray, t: float) -> np.ndarray:".
-    The function should change the given opacity values based on a time parameter t
-    which can also be between 0.0 and 1.0. Over time this should create an animation.
-    The centers and rgbs are already updated correctly over time. The animation can be
-    described as follows: "The object explodes and falls down due to gravity." Make sure
-    the animation looks as realistic and cool as possible and not like a  computer
-    simulation.
-    """
     N = opacities.shape[0]
+    fade_factor = np.exp(-t * np.linspace(0.1, 2.0, N))
+    opacities *= fade_factor[:, np.newaxis]
+    
+    burst_indices = np.random.choice(N, size=int(N * 0.1), replace=False)
+    opacities[burst_indices] = 0.0
 
-    # Random variations to make the effect more natural
-    random_variation = np.random.uniform(0.8, 1.2, size=(N, 1))
+    base_factor = np.linspace(1.0, 0.0, N)
+    opacities *= base_factor[:, np.newaxis]
 
-    # Explosion phase: opacity spikes up
-    explosion_opacity = np.clip((1 - t) * np.random.uniform(0.8, 1.0, size=(N, 1)), 0.0, 1.0)
+    return np.clip(opacities, 0.0, 1.0)
 
-    # Decay phase: opacity fades with time
-    decay_factor = np.exp(-5 * t)  # Exponential decay for realism
-    decay_opacity = decay_factor * random_variation
-
-    # Combine the phases: fade from explosion to decay
-    updated_opacities = explosion_opacity * (1 - t) + decay_opacity * t
-
-    # Ensure opacities are within the valid range [0.0, 1.0]
-    updated_opacities = np.clip(updated_opacities, 0.0, 1.0)
-
-    return updated_opacities
 
 def add_splat_at_t(t: float, server: viser.ViserServer, splat_data: SplatFile, ):
     if np.isclose(t, 0.0):
@@ -324,7 +368,7 @@ def main(splat_path: Path) -> None:
             gs_handle.remove()
             time.sleep(0.1)
             gs_handle = add_splat_at_t(t, server, splat_data)
-            time.sleep(1)
+            time.sleep(1.5)
         
         gui_slider.value = 0
         gui_stop.remove()
