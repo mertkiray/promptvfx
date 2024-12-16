@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 import time
+import re
 from pathlib import Path
 from typing import TypedDict
 
@@ -14,8 +14,12 @@ from plyfile import PlyData
 
 import viser
 from viser import transforms as tf
-from viser._messages import GaussianSplatsMessage, GaussianSplatsProps
-from viser._scene_handles import GaussianSplatHandle, colors_to_uint8
+from viser import ViserServer, GuiApi
+from viser._gui_handles import GuiMarkdownHandle, GuiSliderHandle
+from viser._scene_handles import GaussianSplatHandle
+
+from llm import prompt_llm
+import prompts
 
 
 class SplatFile(TypedDict):
@@ -107,165 +111,168 @@ def load_ply_file(ply_file_path: Path, center: bool = False) -> SplatFile:
         "covariances": covariances,
     }
 
-# def update_centers(centers: np.ndarray, t: float) -> np.ndarray:
-#         """Input prompt:
-#         Given an ndarray "points" of size [N, 3] centered at the origin (0,0,0), I want 
-#         you to write me a python function with the signature "def update_points(points: 
-#         np.ndarray, t: float) -> np.ndarray:". The function should translate the given 
-#         points based on a time parameter t. Over time this should create an animation 
-#         that looks like the point cloud explodes and falls down due to gravity. Make 
-#         sure the animation looks as realistic and cool as possible and not like a 
-#         computer simulation.
-#         """
-#         gravity = np.array([0, 0, -9.81])
-#         damping = 0.98
-#         np.random.seed(0)
-#         initial_velocities = np.random.uniform(-5, 5, size=centers.shape)
-#         velocities = initial_velocities * damping ** t + gravity * t
-#         return centers + velocities * t
+def extract_python_code(markdown: str):
+    pattern = re.compile(r"```python\n(.*?)\n```", re.DOTALL)
+    match = pattern.search(markdown)
+    return match.group(1) if match else ""
 
-# def update_rgbs(rgbs: np.ndarray, t: float) -> np.ndarray:
-#     """Input prompt:
-#     You are given an ndarray "rgbs" of shape [N, 3]. The values are floats in between
-#     0.0 and 1.0. The ndarray belongs to a gaussian splatting model. I want you to write
-#     me a python function with the signature
-#     "def update_rgbs(rgbs:  np.ndarray, t: float) -> np.ndarray:".
-#     The function should change the given rgb values based on a time parameter t which
-#     can also be between 0.0 and 1.0. Over time this should create an animation.
-#     The centers and opacities are already updated correctly over time. The animation can
-#     be described as follows: "The object explodes and falls down due to gravity." Make
-#     sure the animation looks as realistic and cool as possible and not like a  computer
-#     simulation.
-#     """
-#     # Ensure t is clamped between 0.0 and 1.0
-#     t = np.clip(t, 0.0, 1.0)
+def generate_functions(prompt: str, gui: GuiApi):
+    status = gui.add_markdown("*Analyzing Prompt...*")
+    progress = gui.add_progress_bar(value=0, animated=True)
 
-#     # Simulate the "explosion" phase (0.0 <= t <= 0.5)
-#     if t <= 0.5:
-#         # Scale the brightness to peak at t = 0.5
-#         brightness = np.interp(t, [0.0, 0.5], [1.0, 2.0])
-#         colors = rgbs * brightness
-#         # Introduce some fiery hues (shift towards red and yellow)
-#         colors[:, 0] = np.clip(colors[:, 0] * 1.2, 0.0, 1.0)  # Enhance red
-#         colors[:, 1] = np.clip(colors[:, 1] * 0.8, 0.0, 1.0)  # Slightly dampen green
-#         colors[:, 2] = np.clip(colors[:, 2] * 0.5, 0.0, 1.0)  # Strongly dampen blue
+    centers_summary = prompt_llm(prompt=prompt, system_message=prompts.CENTERS_SUMMARY)
+    progress.value = 10
+    rgbs_summary = prompt_llm(prompt=prompt, system_message=prompts.RGBS_SUMMARY)
+    progress.value = 20
+    opacities_summary = prompt_llm(prompt=prompt, system_message=prompts.OPACITIES_SUMMARY)
+    progress.value = 30
+
+    status.content = "*Generating Functions...*"
+    raw_centers_function = prompt_llm(prompt=centers_summary, system_message=prompts.CENTERS_GENERATOR)
+    progress.value = 40
+    raw_rgbs_function = prompt_llm(prompt=rgbs_summary, system_message=prompts.RGBS_GENERATOR)
+    progress.value = 50
+    raw_opacities_function = prompt_llm(prompt=opacities_summary, system_message=prompts.OPACITIES_GENERATOR)
+    progress.value = 60
+
+    status.content = "*Validating Python...*"
+    validated_centers_function = prompt_llm(prompt=raw_centers_function, system_message=prompts.PYTHON_VALIDATION)
+    progress.value = 70
+    validated_rgbs_function = prompt_llm(prompt=raw_rgbs_function, system_message=prompts.PYTHON_VALIDATION)
+    progress.value = 80
+    validated_opacities_function = prompt_llm(prompt=raw_opacities_function, system_message=prompts.PYTHON_VALIDATION)
+    progress.value = 90
+
+    executable_centers_function = extract_python_code(validated_centers_function)
+    executable_rgbs_function = extract_python_code(validated_rgbs_function)
+    executable_opacities_function = extract_python_code(validated_opacities_function)
     
-#     # Simulate the "falling and cooling" phase (0.5 < t <= 1.0)
-#     else:
-#         # Dim the colors gradually as t progresses
-#         brightness = np.interp(t, [0.5, 1.0], [2.0, 0.5])
-#         colors = rgbs * brightness
-#         # Shift hues towards blue and reduce intensity
-#         colors[:, 0] = np.clip(colors[:, 0] * 0.7, 0.0, 1.0)  # Reduce red
-#         colors[:, 1] = np.clip(colors[:, 1] * 0.9, 0.0, 1.0)  # Slightly reduce green
-#         colors[:, 2] = np.clip(colors[:, 2] * 1.3, 0.0, 1.0)  # Enhance blue
+    exec(executable_centers_function, globals())
+    exec(executable_rgbs_function, globals())
+    exec(executable_opacities_function, globals())
 
-#     # Normalize the colors back to the [0.0, 1.0] range
-#     colors = np.clip(colors, 0.0, 1.0)
+    progress.value = 100
+    progress.remove()
+    status.remove()
 
-#     return colors
+    return executable_centers_function, executable_rgbs_function, executable_opacities_function
 
-# def update_opacities(opacities: np.ndarray, t: float) -> np.ndarray:
-#     """Input prompt:
-#     You are given an ndarray "opacities" of shape [N, 1]. The values are floats in
-#     between 0.0 and 1.0. The ndarray belongs do a gaussian splatting model. I want you
-#     to write me a python function with the signature
-#     "def update_opacities(opacities:  np.ndarray, t: float) -> np.ndarray:".
-#     The function should change the given opacity values based on a time parameter t
-#     which can also be between 0.0 and 1.0. Over time this should create an animation.
-#     The centers and rgbs are already updated correctly over time. The animation can be
-#     described as follows: "The object explodes and falls down due to gravity." Make sure
-#     the animation looks as realistic and cool as possible and not like a  computer
-#     simulation.
-#     """
-#     N = opacities.shape[0]
+def add_splat_at_t(t: float, server: viser.ViserServer, splat_data: SplatFile):
+    all_functions_defined = all(key in globals() for key in ["update_centers", "update_rgbs", "update_opacities"])
 
-#     # Random variations to make the effect more natural
-#     random_variation = np.random.uniform(0.8, 1.2, size=(N, 1))
-
-#     # Explosion phase: opacity spikes up
-#     explosion_opacity = np.clip((1 - t) * np.random.uniform(0.8, 1.0, size=(N, 1)), 0.0, 1.0)
-
-#     # Decay phase: opacity fades with time
-#     decay_factor = np.exp(-5 * t)  # Exponential decay for realism
-#     decay_opacity = decay_factor * random_variation
-
-#     # Combine the phases: fade from explosion to decay
-#     updated_opacities = explosion_opacity * (1 - t) + decay_opacity * t
-
-#     # Ensure opacities are within the valid range [0.0, 1.0]
-#     updated_opacities = np.clip(updated_opacities, 0.0, 1.0)
-
-#     return updated_opacities
-
-def update_centers(centers: np.ndarray, t: float) -> np.ndarray:
-    downward_drift = -0.5 * t * centers[:, 1:2]
-    lateral_spread = 0.2 * t * (centers[:, [0, 2]] - np.mean(centers[:, [0, 2]], axis=0))
-    lateral_spread = np.hstack([lateral_spread[:, 0:1], np.zeros((centers.shape[0], 1)), lateral_spread[:, 1:2]])
-    random_oscillation = np.random.uniform(-0.05, 0.05, centers.shape) * (1 - t)
-    heights = centers[:, 1]
-    speed_variation = 1 + (1 - heights / (np.max(heights) + 1e-6)) * t
-    updated_centers = centers + downward_drift + lateral_spread + random_oscillation
-    updated_centers *= speed_variation[:, np.newaxis]
-    tapering_factor = np.clip(1 - t, 0.1, 1.0)
-    updated_centers = updated_centers * tapering_factor
-    return updated_centers
-
-def update_rgbs(rgbs: np.ndarray, t: float) -> np.ndarray:
-    darkening_factor = 1 - t
-    rgbs = rgbs * (0.7 + 0.3 * darkening_factor)
-
-    pulsation = 0.5 + 0.5 * np.sin(2 * np.pi * (t + np.linspace(0, 1, rgbs.shape[0])))
-    rgbs[:, :] = rgbs * pulsation[:, np.newaxis]
-
-    patch_factor = np.random.uniform(0.8, 1.0, size=rgbs.shape[0])
-    fading = (1 - t**2)
-    rgbs[:, :] = rgbs * patch_factor[:, np.newaxis] * fading
-
-    molten_core = np.random.choice([0, 1], size=rgbs.shape[0], p=[0.9, 0.1])
-    molten_color = np.array([1.0, 0.3, 0.0])
-    rgbs = np.where(molten_core[:, np.newaxis] == 1, rgbs + molten_color * t * 0.2, rgbs)
-
-    return np.clip(rgbs, 0.0, 1.0)
-
-def update_opacities(opacities: np.ndarray, t: float) -> np.ndarray:
-    N = opacities.shape[0]
-    fade_factor = np.exp(-t * np.linspace(0.1, 2.0, N))
-    opacities *= fade_factor[:, np.newaxis]
-    
-    burst_indices = np.random.choice(N, size=int(N * 0.1), replace=False)
-    opacities[burst_indices] = 0.0
-
-    base_factor = np.linspace(1.0, 0.0, N)
-    opacities *= base_factor[:, np.newaxis]
-
-    return np.clip(opacities, 0.0, 1.0)
-
-
-def add_splat_at_t(t: float, server: viser.ViserServer, splat_data: SplatFile, ):
-    if np.isclose(t, 0.0):
+    if np.isclose(t, 0.0) or not all_functions_defined:
         return server.scene.add_gaussian_splats(
-        "gaussian_splat",
+        f"splat_{t}",
         centers=splat_data["centers"],
         rgbs=splat_data["rgbs"],
         opacities=splat_data["opacities"],
         covariances=splat_data["covariances"],
         )
     
-    updated_centers = update_centers(splat_data["centers"], t)
-    updated_rgbs = update_rgbs(splat_data["rgbs"], t)
-    updated_opacities = update_opacities(splat_data["opacities"], t)
+    updated_centers = globals()["update_centers"](splat_data["centers"], t)
+    updated_rgbs = globals()["update_rgbs"](splat_data["rgbs"], t)
+    updated_opacities = globals()["update_opacities"](splat_data["opacities"], t)
 
     return server.scene.add_gaussian_splats(
-        "gaussian_splat",
+        f"splat_{t}",
         centers=updated_centers,
         rgbs=updated_rgbs,
         opacities=updated_opacities,
         covariances=splat_data["covariances"],
     )
 
+def load_splats(frames: int, splat_data: SplatFile, server: ViserServer) -> dict[int, GaussianSplatHandle]:
+    status = server.gui.add_markdown("*Loading Frames...*")
+    progress = server.gui.add_progress_bar(0.0, animated=True)
+    seconds_per_frame = 1.0 / frames
+    frame_to_handle: dict[int, GaussianSplatHandle] = {}
+    for frame in range(frames):
+        t = frame * seconds_per_frame
+        gs_handle = add_splat_at_t(
+            t,
+            server,
+            splat_data.copy(),)
+        gs_handle.visible = False
+        frame_to_handle[frame] = gs_handle
+        progress.value = (frame+1)/frames
+    progress.remove()
+    status.remove()
+    return frame_to_handle
+
+def open_prompt(gui: GuiApi, animation_name_handle: GuiMarkdownHandle, functions_to_md: dict[str, str]):
+    with gui.add_modal(title="Animation Generator 🤖") as popout:
+        name_field = gui.add_text("Name", "New Animation")
+        input_field = gui.add_text("Prompt", "")
+
+        generate_button = gui.add_button("🛠 Generate")
+        @generate_button.on_click
+        def _(_) -> None:
+            if not input_field.value:
+                return
+            animation_name_handle.content = f"Animation: **{name_field.value}**"
+            popout.close()
+            centers_md, rgbs_md, opacities_md = generate_functions(prompt=input_field.value, gui=gui)
+            functions_to_md["centers"] = f"```\n{centers_md}\n```"
+            functions_to_md["rgbs"] = f"```\n{rgbs_md}\n```"
+            functions_to_md["opacities"] = f"```\n{opacities_md}\n```"
+
+        abort_button = gui.add_button("Abort", icon=viser.Icon.X, color="red")
+        @abort_button.on_click
+        def _(_) -> None:
+            popout.close()
+
+
+def open_function_inspector(gui: GuiApi, centers_md: str, rgbs_md: str, opacities_md: str):
+    with gui.add_modal("🔎 Function Inspector") as popout:
+        gui.add_markdown(centers_md)
+        gui.add_markdown(rgbs_md)
+        gui.add_markdown(opacities_md)
+        close = gui.add_button("X", color="red")
+        @close.on_click
+        def _(_) -> None:
+            popout.close()
+
+def change_to_frame(frame: int, frame_to_handle: dict[int, GaussianSplatHandle]):
+    for i, handle in frame_to_handle.items():
+        if i == frame:
+            handle.visible = True
+        else:
+            handle.visible = False
+
+def play_animation(gui: GuiApi, frame_slider: GuiSliderHandle, frame_to_handle: dict[int, GaussianSplatHandle]):
+    animation_stopped = False
+    current_frame = frame_slider.value
+    total_frames = int(frame_slider.max) + 1
+
+    gui_stop_button = gui.add_button("Stop", color="red", order=5)
+    @gui_stop_button.on_click
+    def _(_) -> None:
+        nonlocal animation_stopped
+        animation_stopped=True
+        gui_stop_button.remove()
+
+    for frame in range(current_frame, total_frames):
+        if animation_stopped:
+            return
+        change_to_frame(frame, frame_to_handle)
+        frame_slider.value = frame
+        time.sleep((1.0/total_frames)*2)
+    
+    change_to_frame(0, frame_to_handle)
+    frame_slider.value = 0
+    gui_stop_button.remove()
+
+
+def remove_handles(frame_to_handle: dict[int, GaussianSplatHandle]) -> None:
+    for _, handle in frame_to_handle.items():
+        if handle:
+            handle.remove()
+            del handle
+
 def main(splat_path: Path) -> None:
     server = viser.ViserServer()
+    server.scene.add_transform_controls("0",scale=0.3, opacity=0.3)
+    server.gui.configure_theme(dark_mode=True)
 
     if splat_path.suffix == ".splat":
         splat_data = load_splat_file(splat_path, center=True)
@@ -274,108 +281,85 @@ def main(splat_path: Path) -> None:
     else:
         raise SystemExit("Please provide a filepath to a .splat or .ply file.")
 
-    server.scene.add_transform_controls("0",scale=0.3, opacity=0.3)
-    gs_handle = server.scene.add_gaussian_splats(
-        "gaussian_splat",
-        centers=splat_data["centers"],
-        rgbs=splat_data["rgbs"],
-        opacities=splat_data["opacities"],
-        covariances=splat_data["covariances"],
-    )
+    # Animation Settings
+    FRAMES = 12
 
-    server.gui.configure_theme(dark_mode=True)
+    # State
+    functions_to_md: dict[str, str] = {
+        "centers": "```\n```",
+        "rgbs": "```\n```",
+        "opacities": "```\n```",
+    }
+    frame_to_handle: dict[int, GaussianSplatHandle] = {}
 
-    gui_name = server.gui.add_markdown("Current Animation: **None**")
+    gui_animation_name = server.gui.add_markdown("Animation: **None**")
 
-    gui_generator = server.gui.add_button(label="Prompt", icon=viser.Icon.ROBOT)
-    @gui_generator.on_click
+    gui_prompt_button = server.gui.add_button(label="Prompt", icon=viser.Icon.ROBOT, order=1)
+    @gui_prompt_button.on_click
     def _(_) -> None:
-        with server.gui.add_modal(title="Animation Generator 🤖") as gui_popout:
-            gui_popout_name = server.gui.add_text("Name", "New Animation")
-            gui_popout_input = server.gui.add_text("Prompt", "")
-
-            gui_popout_generate = server.gui.add_button("Generate 🛠")
-            @gui_popout_generate.on_click
-            def _(_) -> None:
-                if not gui_popout_input.value:
-                    return
-                # TODO Generate functions with LLM
-                gui_name.content = f"Current Animation: **{gui_popout_name.value}**"
-                gui_popout.close()
-
-            gui_popout_abort = server.gui.add_button("", icon=viser.Icon.X, color="red")
-            @gui_popout_abort.on_click
-            def _(_) -> None:
-                gui_popout.close()
-    
+        open_prompt(
+            gui=server.gui,
+            animation_name_handle=gui_animation_name,
+            functions_to_md=functions_to_md)
     
 
-    gui_reset_up = server.gui.add_button(
-        "Reset up direction",
-        hint="Set the camera control 'up' direction to the current camera's 'up'.",
+    gui_inspect_button = server.gui.add_button(
+        "🔎 Inspect Functions",
+        order=2
     )
-
-    @gui_reset_up.on_click
-    def _(event: viser.GuiEvent) -> None:
-        client = event.client
-        assert client is not None
-        client.camera.up_direction = tf.SO3(client.camera.wxyz) @ np.array(
-            [0.0, -1.0, 0.0]
+    @gui_inspect_button.on_click
+    def _(_) -> None:
+        open_function_inspector(
+            gui=server.gui,
+            centers_md=functions_to_md["centers"],
+            rgbs_md=functions_to_md["rgbs"],
+            opacities_md=functions_to_md["opacities"]
         )
 
-    gui_slider = server.gui.add_slider(
-        label="t",
-        min=0.0,
-        max=1.0,
-        step=0.1,
-        initial_value=0.0,
+    gui_frame_slider = server.gui.add_slider(
+        label=f"Frame ({FRAMES}fps)",
+        min=0,
+        max=FRAMES-1,
+        step=1,
+        initial_value=0,
+        order=4
     )
-
-
-    @gui_slider.on_update
+    @gui_frame_slider.on_update
     def _(_) -> None:
-        nonlocal gs_handle
-        t = gui_slider.value
-        gs_handle.remove()
-        time.sleep(0.1)
-        gs_handle = add_splat_at_t(t, server, splat_data)
+        change_to_frame(gui_frame_slider.value, frame_to_handle)
 
-    gui_play = server.gui.add_button(
+    gui_play_button = server.gui.add_button(
         label="Play",
         color="green",
-        icon=viser.Icon.BRAND_GOOGLE_PLAY
+        icon=viser.Icon.BRAND_GOOGLE_PLAY,
+        order=4
     )
-
-    @gui_play.on_click
+    @gui_play_button.on_click
     def _(_) -> None:
-        nonlocal gs_handle
-        gui_play.disabled = True
-        animation_stopped = False
+        gui_play_button.disabled = True
+        play_animation(
+            gui=server.gui,
+            frame_slider=gui_frame_slider,
+            frame_to_handle=frame_to_handle
+        )
+        gui_play_button.disabled = False
 
-        gui_stop = server.gui.add_button("Stop", color="red")
-        @gui_stop.on_click
-        def _(_) -> None:
-            nonlocal animation_stopped
-            animation_stopped=True
-            gui_stop.remove()
-            gui_play.disabled = False
 
-        for i in range(int(gui_slider.value * 10), int(gui_slider.max * 10)+1):
-            if animation_stopped:
-                return
-            t = i / 10.0
-            gui_slider.value = t
-            gs_handle.remove()
-            time.sleep(0.1)
-            gs_handle = add_splat_at_t(t, server, splat_data)
-            time.sleep(1.5)
-        
-        gui_slider.value = 0
-        gui_stop.remove()
-        gui_play.disabled = False
+    gui_reload_button = server.gui.add_button("Reload Splats", icon=viser.Icon.RESTORE, order=3)
+    @gui_reload_button.on_click
+    def _(_) -> None:
+        nonlocal frame_to_handle
+        if frame_to_handle:
+            remove_handles(frame_to_handle)
+        frame_to_handle = load_splats(FRAMES, splat_data, server)
+        change_to_frame(gui_frame_slider.value, frame_to_handle)
 
-    while True:
-        time.sleep(10.0)
+    try:
+        while True:
+            time.sleep(10.0)
+    except KeyboardInterrupt:
+        remove_handles(frame_to_handle)
+        raise
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ htmlcov
 .lvimrc
 .DS_Store
 .envrc
+.env
 .vite
 build
 src/viser/client/build
