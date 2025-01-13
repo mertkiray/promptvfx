@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import time
 import re
 from pathlib import Path
@@ -111,6 +112,11 @@ def load_ply_file(ply_file_path: Path, center: bool = False) -> SplatFile:
         "covariances": covariances,
     }
 
+
+
+class InvalidFunctionsError(Exception):
+    "The LLM generate an invalid function!"
+
 def extract_python_code(markdown: str):
     pattern = re.compile(r"```python\n(.*?)\n```", re.DOTALL)
     match = pattern.search(markdown)
@@ -158,7 +164,7 @@ def generate_functions(prompt: str, gui: GuiApi):
     return executable_centers_function, executable_rgbs_function, executable_opacities_function
 
 def add_splat_at_t(t: float, server: viser.ViserServer, splat_data: SplatFile):
-    all_functions_defined = all(key in globals() for key in ["update_centers", "update_rgbs", "update_opacities"])
+    all_functions_defined = all(key in globals() for key in ["compute_centers", "compute_rgbs", "compute_opacities"])
 
     if np.isclose(t, 0.0) or not all_functions_defined:
         return server.scene.add_gaussian_splats(
@@ -169,9 +175,12 @@ def add_splat_at_t(t: float, server: viser.ViserServer, splat_data: SplatFile):
         covariances=splat_data["covariances"],
         )
     
-    updated_centers = globals()["update_centers"](splat_data["centers"], t)
-    updated_rgbs = globals()["update_rgbs"](splat_data["rgbs"], t)
-    updated_opacities = globals()["update_opacities"](splat_data["opacities"], t)
+    try:
+        updated_centers = globals()["compute_centers"](splat_data["centers"], t)
+        updated_rgbs = globals()["compute_rgbs"](splat_data["rgbs"], t)
+        updated_opacities = globals()["compute_opacities"](splat_data["opacities"], t)
+    except Exception as e:
+        raise InvalidFunctionsError()
 
     return server.scene.add_gaussian_splats(
         f"splat_{t}",
@@ -188,10 +197,18 @@ def load_splats(frames: int, splat_data: SplatFile, server: ViserServer) -> dict
     frame_to_handle: dict[int, GaussianSplatHandle] = {}
     for frame in range(frames):
         t = frame * seconds_per_frame
-        gs_handle = add_splat_at_t(
-            t,
-            server,
-            splat_data.copy(),)
+        try:
+            gs_handle = add_splat_at_t(
+                t,
+                server,
+                splat_data.copy(),)
+        except InvalidFunctionsError:
+            with server.gui.add_modal("LLM generated invalid functions!") as popout:
+                close = server.gui.add_button("X Close", color="red")
+                @close.on_click
+                def _(_):
+                    popout.close()
+                break
         gs_handle.visible = False
         frame_to_handle[frame] = gs_handle
         progress.value = (frame+1)/frames
@@ -241,7 +258,6 @@ def change_to_frame(frame: int, frame_to_handle: dict[int, GaussianSplatHandle])
 
 def play_animation(gui: GuiApi, frame_slider: GuiSliderHandle, frame_to_handle: dict[int, GaussianSplatHandle]):
     animation_stopped = False
-    current_frame = frame_slider.value
     total_frames = int(frame_slider.max) + 1
 
     gui_stop_button = gui.add_button("Stop", color="red", order=5)
@@ -251,16 +267,15 @@ def play_animation(gui: GuiApi, frame_slider: GuiSliderHandle, frame_to_handle: 
         animation_stopped=True
         gui_stop_button.remove()
 
-    for frame in range(current_frame, total_frames):
-        if animation_stopped:
-            return
-        change_to_frame(frame, frame_to_handle)
-        frame_slider.value = frame
-        time.sleep((1.0/total_frames)*2)
-    
-    change_to_frame(0, frame_to_handle)
-    frame_slider.value = 0
-    gui_stop_button.remove()
+    while True:
+        for frame in range(frame_slider.value+1, total_frames):
+            if animation_stopped:
+                return
+            change_to_frame(frame, frame_to_handle)
+            frame_slider.value = frame
+            time.sleep((1.0/total_frames))
+        change_to_frame(0, frame_to_handle)
+        frame_slider.value = 0
 
 
 def remove_handles(frame_to_handle: dict[int, GaussianSplatHandle]) -> None:
@@ -282,7 +297,7 @@ def main(splat_path: Path) -> None:
         raise SystemExit("Please provide a filepath to a .splat or .ply file.")
 
     # Animation Settings
-    FRAMES = 12
+    FRAMES = 24
 
     # State
     functions_to_md: dict[str, str] = {
@@ -300,7 +315,7 @@ def main(splat_path: Path) -> None:
         open_prompt(
             gui=server.gui,
             animation_name_handle=gui_animation_name,
-            functions_to_md=functions_to_md)
+            functions_to_md=functions_to_md,)
     
 
     gui_inspect_button = server.gui.add_button(
