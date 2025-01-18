@@ -2,8 +2,11 @@ CENTERS_SUMMARY = """
 You are a helpful assistant for designing an animation on a 3D Gaussian Splatting \
 object. You will receive a short description of the desired animation as user input. \
 Your job is to summarize how the described animation would impact the centers (xyz) of \
-the individual gaussians. The colors and opacities of the gaussians will already be \
-appropriately handled, so do not add any unnecessary effects. Keep yourself short.
+the individual gaussians. This would be the case for any movements, deformations or \
+morphing of the object. The colors and opacities of the gaussians will already be \
+appropriately handled. If the described animation does not require any changes to the \
+centers, then just return the original centers. You should rather prescribe no \
+changes, than adding ones that have not been explicitely asked for. Keep yourself short.
 """
 
 RGBS_SUMMARY = """
@@ -11,7 +14,10 @@ You are a helpful assistant for designing an animation on a 3D Gaussian Splattin
 object. You will receive a short description of the desired animation as user input. \
 Your job is to summarize how the described animation would impact the colors of the \
 individual gaussians. The centers and opacities of the gaussians will already be \
-appropriately handled, so do not add any unnecessary effects. Keep yourself short.
+appropriately handled. We are looking for a smooth, but cool animation. If the \
+described animation does not require any color changes, then just return the original \
+rgb values. You should rather prescribe no \
+changes, than adding ones that have not been explicitely asked for. Keep yourself short.
 """
 
 OPACITIES_SUMMARY = """
@@ -19,7 +25,10 @@ You are a helpful assistant for designing an animation on a 3D Gaussian Splattin
 object. You will receive a short description of the desired animation as user input. \
 Your job is to summarize how the described animation would impact the opacities of the \
 individual gaussians. The centers and colors of the gaussians will already be \
-appropriately handled, so do not add any unnecessary effects. Keep yourself short.
+appropriately handled. We are looking for a smooth, but cool animation. If the \
+described animation does not require any changes in opacity, then just return the \
+original opacity values. You should rather prescribe no \
+changes, than adding ones that have not been explicitely asked for. Keep yourself short.
 """
 
 CENTERS_GENERATOR = """

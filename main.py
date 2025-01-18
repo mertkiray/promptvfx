@@ -188,7 +188,7 @@ class Gui(Observer):
         def _(_) -> None:
             open_inspector(gui=self, state=self.state)
 
-        self.reload_btn = server.gui.add_button("Reload Animation", icon=viser.Icon.RESTORE)
+        self.reload_btn = server.gui.add_button("Reload Frames", icon=viser.Icon.RESTORE)
         @self.reload_btn.on_click
         def _(_) -> None:
             remove_gs_handles(self.state)
@@ -267,6 +267,7 @@ def generate_functions(prompt: str, temperature: float, gui: Gui):
     status.remove()
 
     return executable_centers_function, executable_rgbs_function, executable_opacities_function
+
 
 def check_functions_defined() -> bool:
     fn_names = ["compute_centers", "compute_rgbs", "compute_opacities"]
@@ -364,6 +365,7 @@ def open_prompt(scene: SceneApi, gui: Gui, state: State):
             state.centers_fn_md = as_code_block(centers_fn_code)
             state.rgbs_fn_md = as_code_block(rgbs_fn_code)
             state.opacities_fn_md = as_code_block(opacities_fn_code)
+            remove_gs_handles(state)
             load_splats(scene, gui, state)
 
         abort_btn = gui.api.add_button("Abort", icon=viser.Icon.X, color="red")
@@ -431,7 +433,7 @@ def main(splat_path: Path) -> None:
     server = viser.ViserServer()
     server.scene.add_transform_controls("0",scale=0.3, opacity=0.3)
 
-    state = State(splat_path, fps=6)
+    state = State(splat_path, fps=24)
     gui = Gui(server, state)
     state.attach(gui)
 
