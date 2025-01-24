@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import time
 import traceback
 import re
@@ -17,7 +16,6 @@ from plyfile import PlyData
 import viser
 from viser import transforms as tf
 from viser import ViserServer, GuiApi
-from viser._gui_handles import GuiMarkdownHandle, GuiSliderHandle
 from viser._scene_api import SceneApi
 from viser._scene_handles import GaussianSplatHandle
 
@@ -157,15 +155,58 @@ class State(Subject):
         self.rgbs_fn_md: str = "```\n```"
         self.opacities_fn_md: str = "```\n```"
         self.frame_to_gs_handle: dict[int, GaussianSplatHandle] = {}
+        self.has_animation: bool = False
+        self.centers_summary: str = ""
+        self.rgbs_summary: str = ""
+        self.opacities_summary: str = ""
 
     @property
-    def animation_name(self):
+    def animation_name(self) -> str:
         return self._animation_name
 
     @animation_name.setter
-    def animation_name(self, value: str):
+    def animation_name(self, value: str) -> None:
         self._animation_name = value
         self.notify()
+
+    @property
+    def centers_context(self) -> str:
+        return f"""
+Initial prompt:
+{self.animation_prompt}
+
+Initial LLM Analysis:
+{self.centers_summary}
+
+Initial Python Function:
+{self.centers_fn_md}
+"""
+
+    @property
+    def rgbs_context(self) -> str:
+        return f"""
+Initial prompt:
+{self.animation_prompt}
+
+Initial LLM Analysis:
+{self.rgbs_summary}
+
+Initial Python Function:
+{self.rgbs_fn_md}
+"""
+    
+    @property
+    def opacities_context(self) -> str:
+        return f"""
+Initial prompt:
+{self.animation_prompt}
+
+Initial LLM Analysis:
+{self.opacities_summary}
+
+Initial Python Function:
+{self.opacities_fn_md}
+"""
 
 
 
@@ -227,15 +268,18 @@ def extract_python_code(markdown: str):
     match = pattern.search(markdown)
     return match.group(1) if match else ""
 
-def generate_functions(prompt: str, temperature: float, gui: Gui):
+def generate_functions(prompt: str, temperature: float, state: State, gui: Gui):
     status = gui.api.add_markdown("*Analyzing Prompt...*")
     progress = gui.api.add_progress_bar(value=0, animated=True)
 
     centers_summary = prompt_llm(prompt=prompt, system_message=prompts.CENTERS_SUMMARY, temperature=temperature)
+    state.centers_summary = centers_summary
     progress.value = 10
     rgbs_summary = prompt_llm(prompt=prompt, system_message=prompts.RGBS_SUMMARY, temperature=temperature)
+    state.rgbs_summary = rgbs_summary
     progress.value = 20
     opacities_summary = prompt_llm(prompt=prompt, system_message=prompts.OPACITIES_SUMMARY, temperature=temperature)
+    state.opacities_summary = opacities_summary
     progress.value = 30
 
     status.content = "*Generating Functions...*"
@@ -252,6 +296,43 @@ def generate_functions(prompt: str, temperature: float, gui: Gui):
     validated_rgbs_function = prompt_llm(prompt=raw_rgbs_function, system_message=prompts.PYTHON_VALIDATION, temperature=temperature)
     progress.value = 80
     validated_opacities_function = prompt_llm(prompt=raw_opacities_function, system_message=prompts.PYTHON_VALIDATION, temperature=temperature)
+    progress.value = 90
+
+    executable_centers_function = extract_python_code(validated_centers_function)
+    executable_rgbs_function = extract_python_code(validated_rgbs_function)
+    executable_opacities_function = extract_python_code(validated_opacities_function)
+    
+    exec(executable_centers_function, globals())
+    exec(executable_rgbs_function, globals())
+    exec(executable_opacities_function, globals())
+
+    progress.value = 100
+    progress.remove()
+    status.remove()
+
+    return executable_centers_function, executable_rgbs_function, executable_opacities_function
+
+
+def generate_functions_with_feedback(feedback: str, state: State, gui: Gui):
+    status = gui.api.add_markdown("*Implementing Feedback...*")
+    progress = gui.api.add_progress_bar(value=0, animated=True)
+
+    centers_system_msg = prompts.CENTERS_FEEDBACK.format(context=state.centers_context)
+    raw_centers_function = prompt_llm(prompt=feedback, system_message=centers_system_msg, temperature=state.temperature)
+    progress.value = 15
+    rgbs_system_msg = prompts.RGBS_FEEDBACK.format(context=state.rgbs_context)
+    raw_rgbs_function = prompt_llm(prompt=feedback, system_message=rgbs_system_msg, temperature=state.temperature)
+    progress.value = 30
+    opacities_system_msg = prompts.OPACITIES_FEEDBACK.format(context=state.opacities_context)
+    raw_opacities_function = prompt_llm(prompt=feedback, system_message=opacities_system_msg, temperature=state.temperature)
+    progress.value = 45
+
+    status.content = "*Validating Python...*"
+    validated_centers_function = prompt_llm(prompt=raw_centers_function, system_message=prompts.PYTHON_VALIDATION, temperature=state.temperature)
+    progress.value = 60
+    validated_rgbs_function = prompt_llm(prompt=raw_rgbs_function, system_message=prompts.PYTHON_VALIDATION, temperature=state.temperature)
+    progress.value = 75
+    validated_opacities_function = prompt_llm(prompt=raw_opacities_function, system_message=prompts.PYTHON_VALIDATION, temperature=state.temperature)
     progress.value = 90
 
     executable_centers_function = extract_python_code(validated_centers_function)
@@ -340,7 +421,7 @@ def load_splats(scene: SceneApi, gui: Gui, state: State) -> None:
 def as_code_block(value: str) -> str:
     return f"```\n{value}\n```"
 
-def open_prompt(scene: SceneApi, gui: Gui, state: State):
+def open_generator(scene: SceneApi, gui: Gui, state: State):
     with gui.api.add_modal(title="🤖 Animation Generator") as popout:
         name_txt = gui.api.add_text("Name", state.animation_name)
         input_txt = gui.api.add_text("Prompt", state.animation_prompt)
@@ -361,7 +442,30 @@ def open_prompt(scene: SceneApi, gui: Gui, state: State):
             state.animation_prompt = input_txt.value
             state.temperature = temperatur_slider.value
             popout.close()
-            centers_fn_code, rgbs_fn_code, opacities_fn_code = generate_functions(prompt=input_txt.value, temperature=temperatur_slider.value, gui=gui)
+            centers_fn_code, rgbs_fn_code, opacities_fn_code = generate_functions(prompt=input_txt.value, temperature=temperatur_slider.value, state=state, gui=gui)
+            state.centers_fn_md = as_code_block(centers_fn_code)
+            state.rgbs_fn_md = as_code_block(rgbs_fn_code)
+            state.opacities_fn_md = as_code_block(opacities_fn_code)
+            remove_gs_handles(state)
+            load_splats(scene, gui, state)
+            state.has_animation = True
+
+        abort_btn = gui.api.add_button("Abort", icon=viser.Icon.X, color="red")
+        @abort_btn.on_click
+        def _(_) -> None:
+            popout.close()
+
+def open_feedback(scene: SceneApi, gui: Gui, state: State):
+    with gui.api.add_modal(title="🤖 Feedback Loop") as popout:
+        input_txt = gui.api.add_text("Feedback", "")
+
+        improve_btn = gui.api.add_button("🛠 Generate")
+        @improve_btn.on_click
+        def _(_) -> None:
+            if not input_txt.value:
+                return
+            popout.close()
+            centers_fn_code, rgbs_fn_code, opacities_fn_code = generate_functions_with_feedback(feedback=input_txt.value, state=state, gui=gui)
             state.centers_fn_md = as_code_block(centers_fn_code)
             state.rgbs_fn_md = as_code_block(rgbs_fn_code)
             state.opacities_fn_md = as_code_block(opacities_fn_code)
@@ -372,6 +476,23 @@ def open_prompt(scene: SceneApi, gui: Gui, state: State):
         @abort_btn.on_click
         def _(_) -> None:
             popout.close()
+
+def open_prompt(scene: SceneApi, gui: Gui, state: State):
+    with gui.api.add_modal(title="") as popout:
+        generator_btn = gui.api.add_button(label="New Animation")
+        @generator_btn.on_click
+        def _(_) -> None:
+            popout.close()
+            open_generator(scene, gui, state)
+
+        feedback_btn = gui.api.add_button(
+            label="Improve Current",
+            color="yellow",
+            disabled=not state.has_animation)
+        @feedback_btn.on_click
+        def _(_) -> None:
+            popout.close()
+            open_feedback(scene, gui, state)
 
 def open_inspector(gui: Gui, state: State):
     with gui.api.add_modal("🔎 Function Inspector") as popout:
@@ -433,9 +554,21 @@ def main(splat_path: Path) -> None:
     server = viser.ViserServer()
     server.scene.add_transform_controls("0",scale=0.3, opacity=0.3)
 
-    state = State(splat_path, fps=24)
+    state = State(splat_path, fps=2)
     gui = Gui(server, state)
     state.attach(gui)
+    
+    matching_gaussians = np.load("matching_gaussians.npy").flatten()
+    server.scene.add_gaussian_splats(
+        name="background",
+        centers=state.splat["centers"][matching_gaussians == 0],
+        rgbs=state.splat["rgbs"][matching_gaussians == 0],
+        opacities=state.splat["opacities"][matching_gaussians == 0],
+        covariances=state.splat["covariances"][matching_gaussians == 0],
+    )
+
+    print(matching_gaussians.shape)
+    print(state.splat["centers"].shape)
 
     try:
         while True:
