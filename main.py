@@ -557,18 +557,6 @@ def main(splat_path: Path) -> None:
     state = State(splat_path, fps=2)
     gui = Gui(server, state)
     state.attach(gui)
-    
-    matching_gaussians = np.load("matching_gaussians.npy").flatten()
-    server.scene.add_gaussian_splats(
-        name="background",
-        centers=state.splat["centers"][matching_gaussians == 0],
-        rgbs=state.splat["rgbs"][matching_gaussians == 0],
-        opacities=state.splat["opacities"][matching_gaussians == 0],
-        covariances=state.splat["covariances"][matching_gaussians == 0],
-    )
-
-    print(matching_gaussians.shape)
-    print(state.splat["centers"].shape)
 
     try:
         while True:
