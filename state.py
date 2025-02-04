@@ -23,38 +23,63 @@ class Subject:
             observer.update()
 
 class State(Subject):
-    def __init__(self, splat_path: Path, fps: int = 24):
+    def __init__(self, splat_path: Path):
         super().__init__()
         self.splat_path = splat_path
-        self.fps = fps
+        self._fps = 24
 
         self.splat: SplatFile = load_splat(splat_path)
-        self._animation_name: str = ""
-        self.animation_prompt: str = ""
+        self._animation_name: str = "None"
+        self.animation_description: str = ""
         self.temperature: float = 0.7
+        self._animation_duration: int = 1
         self.centers_fn_md: str = "```\n```"
         self.rgbs_fn_md: str = "```\n```"
         self.opacities_fn_md: str = "```\n```"
         self.frame_to_gs_handle: dict[int, GaussianSplatHandle] = {}
         self.has_animation: bool = False
+        self.general_summary: str = ""
         self.centers_summary: str = ""
         self.rgbs_summary: str = ""
         self.opacities_summary: str = ""
 
     @property
-    def animation_name(self) -> str:
+    def animation_title(self) -> str:
         return self._animation_name
 
-    @animation_name.setter
-    def animation_name(self, value: str) -> None:
+    @animation_title.setter
+    def animation_title(self, value: str) -> None:
         self._animation_name = value
         self.notify()
+    
+    @property
+    def animation_duration(self) -> int:
+        return self._animation_duration
+    
+    @animation_duration.setter
+    def animation_duration(self, value: int) -> None:
+        self._animation_duration = value
+        self.notify()
+
+    @property
+    def fps(self) -> int:
+        return self._fps
+    
+    @fps.setter
+    def fps(self, value: int) -> None:
+        self._fps = value
+        self.notify()
+
+    @property
+    def total_frames(self) -> int:
+        return self.fps * self.animation_duration
+
 
     @property
     def centers_context(self) -> str:
         return f"""
 Initial prompt:
-{self.animation_prompt}
+{self.animation_description}
 
 Initial LLM Analysis:
 {self.centers_summary}
@@ -67,7 +92,7 @@ Initial Python Function:
     def rgbs_context(self) -> str:
         return f"""
 Initial prompt:
-{self.animation_prompt}
+{self.animation_description}
 
 Initial LLM Analysis:
 {self.rgbs_summary}
@@ -80,7 +105,7 @@ Initial Python Function:
     def opacities_context(self) -> str:
         return f"""
 Initial prompt:
-{self.animation_prompt}
+{self.animation_description}
 
 Initial LLM Analysis:
 {self.opacities_summary}
