@@ -309,13 +309,13 @@ class Gui(Observer):
         general_summary = prompt_4o(prompt=prompt, system_message=prompts.GENERAL_SUMMARY_SYS_MSG, temperature=self.state.temperature)
         self.state.general_summary = general_summary
         progress.value = 10
-        centers_summary = prompt_4o(prompt=general_summary, system_message=prompts.CENTERS_SUMMARY_SYS_MSG, temperature=self.state.temperature)
+        centers_summary = prompt_4o(prompt=general_summary, system_message=prompts.CENTERS_SUMMARY_SYS_MSG, temperature=0.0)
         self.state.centers_summary = centers_summary
         progress.value = 20
-        rgbs_summary = prompt_4o(prompt=general_summary, system_message=prompts.RGBS_SUMMARY_SYS_MSG, temperature=self.state.temperature)
+        rgbs_summary = prompt_4o(prompt=general_summary, system_message=prompts.RGBS_SUMMARY_SYS_MSG, temperature=0.0)
         self.state.rgbs_summary = rgbs_summary
         progress.value = 30
-        opacities_summary = prompt_4o(prompt=general_summary, system_message=prompts.OPACITIES_SUMMARY_SYS_MSG, temperature=self.state.temperature)
+        opacities_summary = prompt_4o(prompt=general_summary, system_message=prompts.OPACITIES_SUMMARY_SYS_MSG, temperature=0.0)
         self.state.opacities_summary = opacities_summary
         progress.value = 40
 
