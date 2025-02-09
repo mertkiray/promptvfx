@@ -165,9 +165,9 @@ class Gui(Observer):
             description_txt = self.gui_api.add_text("Description", self.state.animation_description)
             temperatur_slider = self.gui_api.add_slider(
                 label="Temperature",
-                min=0.0,
-                max=1.0,
-                step=0.1,
+                min=0.00,
+                max=2.00,
+                step=0.01,
                 initial_value=self.state.temperature
             )
             duration_slider = self.gui_api.add_slider(

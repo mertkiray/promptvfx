@@ -31,7 +31,7 @@ class State(Subject):
         self.splat: SplatFile = load_splat(splat_path)
         self._animation_name: str = "None"
         self.animation_description: str = ""
-        self.temperature: float = 0.7
+        self.temperature: float = 1.00
         self._animation_duration: int = 1
         self.centers_fn_md: str = "```\n```"
         self.rgbs_fn_md: str = "```\n```"
