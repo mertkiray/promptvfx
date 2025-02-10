@@ -4,7 +4,7 @@ import pathlib
 import subprocess
 
 import viser.infra
-from viser._messages import Message
+from src.viser._messages import Message
 
 if __name__ == "__main__":
     # Generate typescript source.

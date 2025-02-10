@@ -30,7 +30,7 @@ from typing_extensions import (
     get_type_hints,
 )
 
-from viser import theme
+from src.viser import theme
 
 from . import _messages
 from ._gui_handles import (

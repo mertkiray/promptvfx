@@ -5,7 +5,7 @@ from typing import TypedDict
 import numpy as np
 import numpy.typing as npt
 from plyfile import PlyData
-from viser import transforms as tf
+from src.viser import transforms as tf
 
 class SplatFile(TypedDict):
     """Data loaded from an antimatter15-style splat file."""

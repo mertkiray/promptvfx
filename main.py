@@ -8,7 +8,7 @@ import tyro
 
 from gui import Gui
 from state import State
-import viser
+import src.viser as viser
 from splat_utils import load_splat
 
 def main(splat_path: Path) -> None:

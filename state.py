@@ -1,6 +1,6 @@
 from pathlib import Path
 from splat_utils import SplatFile, load_splat
-from viser._scene_handles import GaussianSplatHandle
+from src.viser._scene_handles import GaussianSplatHandle
 
 class Observer:
     def update(self):

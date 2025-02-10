@@ -3,10 +3,10 @@ import time
 import traceback
 import numpy as np
 from state import State, Observer
-import viser
-from viser._gui_api import GuiApi
-from viser._scene_api import SceneApi
-from viser._viser import ViserServer
+import src.viser as viser
+from src.viser._gui_api import GuiApi
+from src.viser._scene_api import SceneApi
+from src.viser._viser import ViserServer
 from llm_utils import AnimationSummary, prompt_4o,  prompt_o1, extract_centers_summary, extract_rgbs_summary, extract_opacities_summary
 import prompts
 
