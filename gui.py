@@ -19,33 +19,21 @@ class Gui(Observer):
         self.state: State = state
         self.state.frame_to_gs_handle[0] = self.add_splat_at_t(0)
 
+        # Gui Elements
         self.title_md = self.gui_api.add_markdown(f"Animation: **{self.state.animation_title}**")
 
         self.prompt_btn = self.gui_api.add_button("Prompt", icon=viser.Icon.ROBOT)
-        @self.prompt_btn.on_click
-        def _(_) -> None:
-            self.open_prompt()
+        self.prompt_btn.on_click(lambda _: self.open_prompt())
 
         self.inspect_btn = self.gui_api.add_button("Inspect Functions", icon=viser.Icon.FUNCTION)
-        @self.inspect_btn.on_click
-        def _(_) -> None:
-            self.open_inspector()
+        self.inspect_btn.on_click(lambda _: self.open_inspector())
+            
 
         self.reload_btn = server.gui.add_button("Reload Frames", icon=viser.Icon.RESTORE)
-        @self.reload_btn.on_click
-        def _(_) -> None:
-            self.reload_splats()
+        self.reload_btn.on_click(lambda _: self.reload_splats())
         
-        self.fps_dropdown = self.gui_api.add_dropdown(
-            label="FPS",
-            options=["8", "24", "60", "144"],
-            initial_value="24"
-        )
-        @self.fps_dropdown.on_update
-        def _(_) -> None:
-            self.state.fps = int(self.fps_dropdown.value)
-            if self.check_functions_defined():
-                self.reload_splats()
+        self.fps_dropdown = self.gui_api.add_dropdown(label="FPS", options=["8", "24", "60"], initial_value="24")
+        self.fps_dropdown.on_update(lambda _: self.update_fps())
 
 
         self.speed_dropdown = self.gui_api.add_dropdown(
@@ -61,23 +49,31 @@ class Gui(Observer):
             step=1,
             initial_value=0,
         )
-        @self.frame_slider.on_update
-        def _(_) -> None:
-            self.state.change_to_frame(self.frame_slider.value)
+        self.frame_slider.on_update(lambda _: self.update_frame())
+            
 
         self.play_btn = server.gui.add_button("▶ Play", color="green")
-        @self.play_btn.on_click
-        def _(_) -> None:
-            self.play_btn.disabled = True
-            self.fps_dropdown.disabled = True
-            self.play_animation()
-            self.play_btn.disabled = False
-            self.fps_dropdown.disabled = False
+        self.play_btn.on_click(lambda _: self.play())
 
     def update(self):
         self.title_md.content = f"Animation: **{self.state.animation_title}**"
         self.frame_slider.max = self.state.total_frames-1
 
+    def update_fps(self):
+        self.state.fps = int(self.fps_dropdown.value)
+        if self.check_functions_defined():
+            self.reload_splats()
+
+    def play(self):
+        self.play_btn.disabled = True
+        self.fps_dropdown.disabled = True
+        self.play_animation()
+        self.play_btn.disabled = False
+        self.fps_dropdown.disabled = False
+
+
+    def update_frame(self):
+        self.state.change_to_frame(self.frame_slider.value)
 
     def open_debug(self, error_msg: str, t: float) -> None:
         with self.gui_api.add_modal("🐞 Debugger") as popout:
