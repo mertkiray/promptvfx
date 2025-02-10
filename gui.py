@@ -27,23 +27,18 @@ class Gui(Observer):
 
         self.inspect_btn = self.gui_api.add_button("Inspect Functions", icon=viser.Icon.FUNCTION)
         self.inspect_btn.on_click(lambda _: self.open_inspector())
-            
 
         self.reload_btn = server.gui.add_button("Reload Frames", icon=viser.Icon.RESTORE)
         self.reload_btn.on_click(lambda _: self.reload_splats())
-        
-        self.fps_dropdown = self.gui_api.add_dropdown(label="FPS", options=["8", "24", "60"], initial_value="24")
-        self.fps_dropdown.on_update(lambda _: self.update_fps())
 
+        self.fps_btn_grp = self.gui_api.add_button_group(f"FPS ({self.state.fps})", ["8", "24", "60"])
+        self.fps_btn_grp.on_click(lambda _: self.update_fps())
 
-        self.speed_dropdown = self.gui_api.add_dropdown(
-            label="Speed",
-            options=["0.25x", "0.5x", "1x", "2x"],
-            initial_value="1x"
-        )
+        self.speed_btn_grp = self.gui_api.add_button_group(label=f"Speed ({self.state.speed})", options=["0.25x", "0.5x", "1x"])
+        self.speed_btn_grp.on_click(lambda _: self.update_speed())
 
         self.frame_slider = self.gui_api.add_slider(
-            label=f"Current Frame",
+            label="Current Frame",
             min=0,
             max=self.state.total_frames-1,
             step=1,
@@ -58,18 +53,27 @@ class Gui(Observer):
     def update(self):
         self.title_md.content = f"Animation: **{self.state.animation_title}**"
         self.frame_slider.max = self.state.total_frames-1
+        self.fps_btn_grp.label = f"FPS ({self.state.fps})"
+        self.speed_btn_grp.label = f"Speed ({self.state.speed})"
+        self.fps_btn_grp.disabled = False
+
+    def update_speed(self):
+        self.state.speed = self.speed_btn_grp.value
 
     def update_fps(self):
-        self.state.fps = int(self.fps_dropdown.value)
+        self.state.animation_running = False # Ensure the animation is paused
+        self.frame_slider.value = 0
+        self.update_frame()
+        self.state.fps = int(self.fps_btn_grp.value)
         if self.check_functions_defined():
             self.reload_splats()
 
     def play(self):
         self.play_btn.disabled = True
-        self.fps_dropdown.disabled = True
+        # self.fps_btn_grp.disabled = True
         self.play_animation()
         self.play_btn.disabled = False
-        self.fps_dropdown.disabled = False
+        # self.fps_btn_grp.disabled = False
 
 
     def update_frame(self):
@@ -214,8 +218,7 @@ class Gui(Observer):
                 self.state.centers_fn_md = self.as_code_block(centers_fn_code)
                 self.state.rgbs_fn_md = self.as_code_block(rgbs_fn_code)
                 self.state.opacities_fn_md = self.as_code_block(opacities_fn_code)
-                self.state.remove_gs_handles()
-                self.load_splats()
+                self.reload_splats()
 
             
             generator_btn = self.gui_api.add_button(label="♻ New Animation",  color="green")
@@ -247,25 +250,24 @@ class Gui(Observer):
                 popout.close()
 
     def play_animation(self):
-        animation_stopped = False
+        self.state.animation_running = True
 
         stop_btn = self.gui_api.add_button("◼ Stop", color="red")
         @stop_btn.on_click
         def _(_) -> None:
-            nonlocal animation_stopped
-            animation_stopped=True
-            stop_btn.remove()
+            self.state.animation_running = False
 
         while True:
             for frame in range(self.frame_slider.value+1, self.state.total_frames):
-                if animation_stopped:
+                if not self.state.animation_running:
+                    stop_btn.remove()
                     return
                 self.state.change_to_frame(frame)
                 self.frame_slider.value = frame
-                time.sleep((1.0/self.state.fps) * self.speed_to_sleep_factor(self.speed_dropdown.value))
+                time.sleep((1.0/self.state.fps) * self.speed_to_sleep_factor(self.state.speed))
             self.state.change_to_frame(0)
             self.frame_slider.value = 0
-            time.sleep((1.0/self.state.fps) * self.speed_to_sleep_factor(self.speed_dropdown.value))
+            time.sleep((1.0/self.state.fps) * self.speed_to_sleep_factor(self.state.speed))
 
 
     def check_functions_defined(self) -> bool:
@@ -308,20 +310,20 @@ class Gui(Observer):
         self.state.opacities_summary = extract_opacities_summary(general_summary)
 
         progress.value = 25
-        status.content = "*Generating Centers Function...*"
+        status.content = "*Generating Center Function...*"
         centers_generator_prompt = prompts.CENTERS_GENERATOR_TEMPLATE.format(centers_summary=self.state.centers_summary)
         centers_function_md = prompt_4o(prompt=centers_generator_prompt,
                                                system_message=prompts.GENERATOR_SYS_MSG,
                                                temperature=0.0)
 
         progress.value = 50
-        status.content = "*Generating RGBs Function...*"
+        status.content = "*Generating RGB Function...*"
         rgbs_generator_prompt = prompts.RGBS_GENERATOR_TEMPLATE.format(rgbs_summary=self.state.rgbs_summary)
         rgbs_function_md = prompt_4o(prompt=rgbs_generator_prompt,
                                             system_message=prompts.GENERATOR_SYS_MSG,
                                             temperature=0.0)
         progress.value = 75
-        status.content = "*Generating Opacities Function...*"
+        status.content = "*Generating Opacity Function...*"
         opacities_generator_prompt = prompts.OPACITIES_GENERATOR_TEMPLATE.format(opacities_summary=self.state.opacities_summary)
         opacities_function_md = prompt_4o(prompt=opacities_generator_prompt,
                                                  system_message=prompts.GENERATOR_SYS_MSG,

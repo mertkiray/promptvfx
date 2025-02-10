@@ -25,9 +25,9 @@ class Subject:
 class State(Subject):
     def __init__(self, splat_path: Path):
         super().__init__()
-        self.splat_path = splat_path
-        self._fps = 24
-
+        self.splat_path: Path = splat_path
+        self._fps: int = 24
+        self._speed: str = "1x"
         self.splat: SplatFile = load_splat(splat_path)
         self._animation_name: str = "None"
         self.animation_description: str = ""
@@ -41,6 +41,7 @@ class State(Subject):
         self.centers_summary: str = ""
         self.rgbs_summary: str = ""
         self.opacities_summary: str = ""
+        self.animation_running: bool = False
 
     @property
     def animation_title(self) -> str:
@@ -67,6 +68,15 @@ class State(Subject):
     @fps.setter
     def fps(self, value: int) -> None:
         self._fps = value
+        self.notify()
+        
+    @property
+    def speed(self) -> str:
+        return self._speed
+    
+    @speed.setter
+    def speed(self, value: str) -> None:
+        self._speed = value
         self.notify()
 
     @property
