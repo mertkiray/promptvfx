@@ -7,7 +7,7 @@ import viser
 from viser._gui_api import GuiApi
 from viser._scene_api import SceneApi
 from viser._viser import ViserServer
-from llm_utils import prompt_4o,  prompt_o1
+from llm_utils import AnimationSummary, prompt_4o,  prompt_o1, extract_centers_summary, extract_rgbs_summary, extract_opacities_summary
 import prompts
 
 
@@ -161,7 +161,6 @@ class Gui(Observer):
 
     def open_generator(self):
         with self.gui_api.add_modal(title="🤖 Animation Generator") as popout:
-            title_txt = self.gui_api.add_text("Title", self.state.animation_title)
             description_txt = self.gui_api.add_text("Description", self.state.animation_description)
             temperatur_slider = self.gui_api.add_slider(
                 label="Temperature",
@@ -185,13 +184,11 @@ class Gui(Observer):
                     return
                 popout.close()
 
-                self.state.animation_title = title_txt.value
                 self.state.animation_description = description_txt.value
                 self.state.temperature = temperatur_slider.value
                 self.state.animation_duration = duration_slider.value
 
-                prompt = self.build_prompt()
-                centers_fn, rgbs_fn, opacities_fn = self.generate_functions(prompt)
+                centers_fn, rgbs_fn, opacities_fn = self.generate_functions()
                 exec(centers_fn, globals())
                 exec(rgbs_fn, globals())
                 exec(opacities_fn, globals())
@@ -293,56 +290,56 @@ class Gui(Observer):
             return 1.0
 
     def build_prompt(self) -> str:
-        return ("## Animation Title:"
-                f"{self.state.animation_title}"
-                "\n"
-                "## Animation Description:"
+        return ("## Animation Description:"
                 f"{self.state.animation_description}"
                 "\n"
-                "## Animation Duration (in seconds):"
-                f"{self.state.animation_duration}")
+                "## Animation Duration:"
+                f"{self.state.animation_duration} seconds")
 
-    def generate_functions(self, prompt: str):
+    def generate_functions(self):
+        prompt = self.build_prompt()
+
         status = self.gui_api.add_markdown("*Analyzing Prompt...*")
         progress = self.gui_api.add_progress_bar(value=0, animated=True)
 
-        general_summary = prompt_4o(prompt=prompt, system_message=prompts.GENERAL_SUMMARY_SYS_MSG, temperature=self.state.temperature)
-        self.state.general_summary = general_summary
-        progress.value = 10
-        centers_summary = prompt_4o(prompt=general_summary, system_message=prompts.CENTERS_SUMMARY_SYS_MSG, temperature=0.0)
-        self.state.centers_summary = centers_summary
-        progress.value = 20
-        rgbs_summary = prompt_4o(prompt=general_summary, system_message=prompts.RGBS_SUMMARY_SYS_MSG, temperature=0.0)
-        self.state.rgbs_summary = rgbs_summary
-        progress.value = 30
-        opacities_summary = prompt_4o(prompt=general_summary, system_message=prompts.OPACITIES_SUMMARY_SYS_MSG, temperature=0.0)
-        self.state.opacities_summary = opacities_summary
-        progress.value = 40
+        general_summary = prompt_4o(prompt=prompt,
+                                    system_message=prompts.SUMMARY_SYS_MSG,
+                                    response_format=AnimationSummary,
+                                    temperature=self.state.temperature)
+        self.state.animation_title = general_summary.__getattribute__("animation_title").title()
+        self.state.centers_summary = extract_centers_summary(general_summary)
+        self.state.rgbs_summary = extract_rgbs_summary(general_summary)
+        self.state.opacities_summary = extract_opacities_summary(general_summary)
 
-        status.content = "*Generating Functions...*"
-        # raw_centers_function = prompt_4o(prompt=centers_summary, system_message=prompts.CENTERS_GENERATOR_TEMPLATE, temperature=self.state.temperature)
-        # progress.value = 40
-        # raw_rgbs_function = prompt_4o(prompt=rgbs_summary, system_message=prompts.RGBS_GENERATOR, temperature=self.state.temperature)
-        # progress.value = 50
-        # raw_opacities_function = prompt_4o(prompt=opacities_summary, system_message=prompts.OPACITIES_GENERATOR, temperature=self.state.temperature)
-        # progress.value = 60
+        progress.value = 25
+        status.content = "*Generating Centers Function...*"
+        centers_generator_prompt = prompts.CENTERS_GENERATOR_TEMPLATE.format(centers_summary=self.state.centers_summary)
+        centers_function_md = prompt_4o(prompt=centers_generator_prompt,
+                                               system_message=prompts.GENERATOR_SYS_MSG,
+                                               temperature=0.0)
 
-        # status.content = "*Validating Python...*"
-        validated_centers_function = prompt_o1(prompt=prompts.CENTERS_GENERATOR_TEMPLATE.format(centers_summary=centers_summary))
-        progress.value = 60
-        validated_rgbs_function = prompt_o1(prompt=prompts.RGBS_GENERATOR_TEMPLATE.format(rgbs_summary=rgbs_summary))
-        progress.value = 80
-        validated_opacities_function = prompt_o1(prompt=prompts.OPACITIES_GENERATOR_TEMPLATE.format(opacities_summary=opacities_summary))
+        progress.value = 50
+        status.content = "*Generating RGBs Function...*"
+        rgbs_generator_prompt = prompts.RGBS_GENERATOR_TEMPLATE.format(rgbs_summary=self.state.rgbs_summary)
+        rgbs_function_md = prompt_4o(prompt=rgbs_generator_prompt,
+                                            system_message=prompts.GENERATOR_SYS_MSG,
+                                            temperature=0.0)
+        progress.value = 75
+        status.content = "*Generating Opacities Function...*"
+        opacities_generator_prompt = prompts.OPACITIES_GENERATOR_TEMPLATE.format(opacities_summary=self.state.opacities_summary)
+        opacities_function_md = prompt_4o(prompt=opacities_generator_prompt,
+                                                 system_message=prompts.GENERATOR_SYS_MSG,
+                                                 temperature=0.0)
         progress.value = 100
 
-        executable_centers_function = self.extract_python_code(validated_centers_function)
-        executable_rgbs_function = self.extract_python_code(validated_rgbs_function)
-        executable_opacities_function = self.extract_python_code(validated_opacities_function)
+        centers_function_code = self.extract_python_code(centers_function_md)
+        rgbs_function_code = self.extract_python_code(rgbs_function_md)
+        opacities_function_code = self.extract_python_code(opacities_function_md)
 
         progress.remove()
         status.remove()
 
-        return executable_centers_function, executable_rgbs_function, executable_opacities_function
+        return centers_function_code, rgbs_function_code, opacities_function_code
 
 
     def generate_functions_with_feedback(self, feedback: str):
@@ -350,35 +347,31 @@ class Gui(Observer):
         progress = self.gui_api.add_progress_bar(value=0, animated=True)
 
         centers_system_msg = prompts.CENTERS_FEEDBACK.format(context=self.state.centers_context)
-        raw_centers_function = prompt_4o(prompt=feedback, system_message=centers_system_msg, temperature=self.state.temperature)
+        centers_function_md = prompt_4o(prompt=feedback,
+                                        system_message=centers_system_msg,
+                                          temperature=0.0)
         progress.value = 15
         rgbs_system_msg = prompts.RGBS_FEEDBACK.format(context=self.state.rgbs_context)
-        raw_rgbs_function = prompt_4o(prompt=feedback, system_message=rgbs_system_msg, temperature=self.state.temperature)
+        rgbs_function_md = prompt_4o(prompt=feedback,
+                                     system_message=rgbs_system_msg,
+                                          temperature=0.0)
         progress.value = 30
         opacities_system_msg = prompts.OPACITIES_FEEDBACK.format(context=self.state.opacities_context)
-        raw_opacities_function = prompt_4o(prompt=feedback, system_message=opacities_system_msg, temperature=self.state.temperature)
+        opacities_function_md = prompt_4o(prompt=feedback,
+                                          system_message=opacities_system_msg,
+                                          temperature=0.0)
         progress.value = 45
 
-        status.content = "*Validating Python...*"
-        validated_centers_function = prompt_4o(prompt=raw_centers_function, system_message=prompts.PYTHON_VALIDATION, temperature=self.state.temperature)
-        progress.value = 60
-        validated_rgbs_function = prompt_4o(prompt=raw_rgbs_function, system_message=prompts.PYTHON_VALIDATION, temperature=self.state.temperature)
-        progress.value = 75
-        validated_opacities_function = prompt_4o(prompt=raw_opacities_function, system_message=prompts.PYTHON_VALIDATION, temperature=self.state.temperature)
-        progress.value = 90
-
-        executable_centers_function = self.extract_python_code(validated_centers_function)
-        executable_rgbs_function = self.extract_python_code(validated_rgbs_function)
-        executable_opacities_function = self.extract_python_code(validated_opacities_function)
+        centers_function_code = self.extract_python_code(centers_function_md)
+        rgbs_function_code = self.extract_python_code(rgbs_function_md)
+        opacities_function_code = self.extract_python_code(opacities_function_md)
         
-        exec(executable_centers_function, globals())
-        exec(executable_rgbs_function, globals())
-        exec(executable_opacities_function, globals())
+        exec(centers_function_code, globals())
+        exec(rgbs_function_code, globals())
+        exec(opacities_function_code, globals())
 
         progress.value = 100
         progress.remove()
         status.remove()
 
-        return executable_centers_function, executable_rgbs_function, executable_opacities_function
-
-
+        return centers_function_code, rgbs_function_code, opacities_function_code

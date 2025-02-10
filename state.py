@@ -38,7 +38,6 @@ class State(Subject):
         self.opacities_fn_md: str = "```\n```"
         self.frame_to_gs_handle: dict[int, GaussianSplatHandle] = {}
         self.has_animation: bool = False
-        self.general_summary: str = ""
         self.centers_summary: str = ""
         self.rgbs_summary: str = ""
         self.opacities_summary: str = ""
