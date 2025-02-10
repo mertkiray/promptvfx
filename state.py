@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from splat_utils import SplatFile, load_splat
 from src.viser._scene_handles import GaussianSplatHandle
@@ -23,12 +25,13 @@ class Subject:
             observer.update()
 
 class State(Subject):
-    def __init__(self, splat_path: Path):
+    def __init__(self):
         super().__init__()
-        self.splat_path: Path = splat_path
-        self._fps: int = 24
+        self._splat_path: Path = Path("data/luigi.splat")
+        self._fps: int = 8
         self._speed: str = "1x"
-        self.splat: SplatFile = load_splat(splat_path)
+        self._splat: SplatFile = load_splat(self._splat_path)
+        self.background: GaussianSplatHandle
         self._animation_name: str = "None"
         self.animation_description: str = ""
         self.temperature: float = 1.00
@@ -42,6 +45,15 @@ class State(Subject):
         self.rgbs_summary: str = ""
         self.opacities_summary: str = ""
         self.animation_running: bool = False
+
+    @property
+    def splat_path(self) -> Path:
+        return self._splat_path
+    
+    @splat_path.setter
+    def splat_path(self, value: Path) -> None:
+        self._splat_path = value
+        self._splat = load_splat(value)
 
     @property
     def animation_title(self) -> str:
@@ -137,3 +149,4 @@ Initial Python Function:
             if gs_handle:
                 gs_handle.remove()
                 del gs_handle
+        self.frame_to_gs_handle = {}

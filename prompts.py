@@ -8,7 +8,7 @@ Then note down the effect for the centers, rgbs and opacities parameters in this
 Ensure temporal consistency and smoove transitions between time segments.
 Use as many time segments as you deem necessary with fine granularity being preferred over coarse granularity.
 Refuse to give absolute numerical instructions like 'shift the centers to (0, 1, 0)'  or 'opacities go to 1.0' or 'rgb values go to (255, 0, 0)', but instead you relative instructions like 'The color shifts towards a rosy magenta'. 
-To finish your response give the animation an appropriate title without any punctuation.
+To finish your response give the animation a summarizing but very short title without any punctuation.
 """
 
 GENERATOR_SYS_MSG = """

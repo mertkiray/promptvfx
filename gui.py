@@ -1,7 +1,9 @@
+from pathlib import Path
 import re
 import time
 import traceback
 import numpy as np
+from splat_utils import load_splat
 from state import State, Observer
 import src.viser as viser
 from src.viser._gui_api import GuiApi
@@ -11,51 +13,108 @@ from llm_utils import AnimationSummary, prompt_4o,  prompt_o1, extract_centers_s
 import prompts
 
 
+# Default Functions
+def compute_centers(t: float, centers: np.ndarray) -> np.ndarray:
+    return centers
+
+def compute_rgbs(t: float, rgbs: np.ndarray) -> np.ndarray:
+    return rgbs
+
+def compute_opacities(t: float, opacities: np.ndarray) -> np.ndarray:
+    return opacities
+
 class Gui(Observer):
     def __init__(self, server: ViserServer, state: State):
         self.scene_api: SceneApi = server.scene
         self.gui_api: GuiApi = server.gui
         self.gui_api.configure_theme(dark_mode=True)
         self.state: State = state
+        self.load_background()
         self.state.frame_to_gs_handle[0] = self.add_splat_at_t(0)
 
         # Gui Elements
-        self.title_md = self.gui_api.add_markdown(f"Animation: **{self.state.animation_title}**")
+        self.tab_group = self.gui_api.add_tab_group()
+        ## Animation Tab
+        with self.tab_group.add_tab("Animation"):
+            self.title_md = self.gui_api.add_markdown(f"Title: **{self.state.animation_title}**")
 
-        self.prompt_btn = self.gui_api.add_button("Prompt", icon=viser.Icon.ROBOT)
-        self.prompt_btn.on_click(lambda _: self.open_prompt())
+            self.prompt_btn = self.gui_api.add_button("Prompt", icon=viser.Icon.ROBOT)
+            self.prompt_btn.on_click(lambda _: self.open_prompt())
 
-        self.inspect_btn = self.gui_api.add_button("Inspect Functions", icon=viser.Icon.FUNCTION)
-        self.inspect_btn.on_click(lambda _: self.open_inspector())
+            self.inspect_btn = self.gui_api.add_button("Inspect Functions", icon=viser.Icon.FUNCTION)
+            self.inspect_btn.on_click(lambda _: self.open_inspector())
 
-        self.reload_btn = server.gui.add_button("Reload Frames", icon=viser.Icon.RESTORE)
-        self.reload_btn.on_click(lambda _: self.reload_splats())
+            self.reload_btn = server.gui.add_button("Reload Frames", icon=viser.Icon.RESTORE)
+            self.reload_btn.on_click(lambda _: self.reload_splats())
 
-        self.fps_btn_grp = self.gui_api.add_button_group(f"FPS ({self.state.fps})", ["8", "24", "60"])
-        self.fps_btn_grp.on_click(lambda _: self.update_fps())
+            self.fps_btn_grp = self.gui_api.add_button_group(f"FPS ({self.state.fps})", ["8", "24", "60"])
+            self.fps_btn_grp.on_click(lambda _: self.update_fps())
 
-        self.speed_btn_grp = self.gui_api.add_button_group(label=f"Speed ({self.state.speed})", options=["0.25x", "0.5x", "1x"])
-        self.speed_btn_grp.on_click(lambda _: self.update_speed())
+            self.speed_btn_grp = self.gui_api.add_button_group(
+                label=f"Speed ({self.state.speed})",
+                options=["0.25x", "0.5x", "1x", "2x"])
+            self.speed_btn_grp.on_click(lambda _: self.update_speed())
 
-        self.frame_slider = self.gui_api.add_slider(
-            label="Current Frame",
-            min=0,
-            max=self.state.total_frames-1,
-            step=1,
-            initial_value=0,
-        )
-        self.frame_slider.on_update(lambda _: self.update_frame())
+            self.frame_slider = self.gui_api.add_slider(
+                label="Current Frame",
+                min=0,
+                max=self.state.total_frames-1,
+                step=1,
+                initial_value=0,
+            )
+            self.frame_slider.on_update(lambda _: self.update_frame())
+                
+
+            self.play_btn = server.gui.add_button("▶ Play", color="green")
+            self.play_btn.on_click(lambda _: self.play())
+        ## Scene Tab
+        with self.tab_group.add_tab("Scene"):
+            self.world_axis_cbox = self.gui_api.add_checkbox("World Axis", initial_value=False)
+            self.world_axis_cbox.on_update(lambda _: self.toggle_world_axis())
+
+            self.background_cbox = self.gui_api.add_checkbox("Background", initial_value=True)
+            self.background_cbox.on_update(lambda _: self.toggle_background())
             
+            with self.gui_api.add_folder("Splat Files"):
+                self.luigi_btn = self.gui_api.add_button("luigi.splat")
+                self.luigi_btn.on_click(lambda _: self.change_to_splat(Path("data/luigi.splat")))
 
-        self.play_btn = server.gui.add_button("▶ Play", color="green")
-        self.play_btn.on_click(lambda _: self.play())
+                self.nike_btn = self.gui_api.add_button("nike.splat")
+                self.nike_btn.on_click(lambda _: self.change_to_splat(Path("data/nike.splat")))
+
+                self.vase_btn = self.gui_api.add_button("vase.splat")
+                self.vase_btn.on_click(lambda _: self.change_to_splat(Path("data/vase.splat")))
+
+                self.upload_btn = self.gui_api.add_upload_button("Upload", icon=viser.Icon.UPLOAD, color="teal")
 
     def update(self):
-        self.title_md.content = f"Animation: **{self.state.animation_title}**"
+        self.title_md.content = f"Title: **{self.state.animation_title}**"
         self.frame_slider.max = self.state.total_frames-1
         self.fps_btn_grp.label = f"FPS ({self.state.fps})"
         self.speed_btn_grp.label = f"Speed ({self.state.speed})"
         self.fps_btn_grp.disabled = False
+
+    def change_to_splat(self, splat_path: Path):
+        self.state.splat_path = splat_path
+        self.reload_splats()
+
+    def toggle_background(self):
+        self.state.background.visible = not self.state.background.visible
+
+    def load_background(self):
+        bg_data = load_splat(Path("data/table.splat"))
+        bg_handle = self.scene_api.add_gaussian_splats(
+                f"splat_bg",
+                centers=bg_data["centers"],
+                rgbs=bg_data["rgbs"],
+                opacities=bg_data["opacities"],
+                covariances=bg_data["covariances"],
+                )
+        bg_handle.position = (0.2, 0.2, -1.75)
+        self.state.background = bg_handle
+
+    def toggle_world_axis(self):
+        self.scene_api.world_axes.visible = not self.scene_api.world_axes.visible
 
     def update_speed(self):
         self.state.speed = self.speed_btn_grp.value
@@ -65,8 +124,7 @@ class Gui(Observer):
         self.frame_slider.value = 0
         self.update_frame()
         self.state.fps = int(self.fps_btn_grp.value)
-        if self.check_functions_defined():
-            self.reload_splats()
+        self.reload_splats()
 
     def play(self):
         self.play_btn.disabled = True
@@ -93,26 +151,26 @@ class Gui(Observer):
     def add_splat_at_t(self, t: float):
         if np.isclose(t, 0.0):
             return self.scene_api.add_gaussian_splats(
-            f"splat_0",
-            centers=self.state.splat["centers"],
-            rgbs=self.state.splat["rgbs"],
-            opacities=self.state.splat["opacities"],
-            covariances=self.state.splat["covariances"],
+            f"splat_{self.state.splat_path.stem}_0",
+            centers=self.state._splat["centers"],
+            rgbs=self.state._splat["rgbs"],
+            opacities=self.state._splat["opacities"],
+            covariances=self.state._splat["covariances"],
             )
         
         try:
-            centers = self.state.splat["centers"]
-            rgbs = self.state.splat["rgbs"]
-            opacities = self.state.splat["opacities"]
+            centers = self.state._splat["centers"]
+            rgbs = self.state._splat["rgbs"]
+            opacities = self.state._splat["opacities"]
             centers_at_t = globals()["compute_centers"](t, centers)
             rbgs_at_t = globals()["compute_rgbs"](t, rgbs)
             opacities_at_t = globals()["compute_opacities"](t, opacities)
             return self.scene_api.add_gaussian_splats(
-                f"splat_{t}",
+                f"splat_{self.state.splat_path.stem}_{t}",
                 centers=centers_at_t,
                 rgbs=rbgs_at_t,
                 opacities=opacities_at_t,
-                covariances=self.state.splat["covariances"],
+                covariances=self.state._splat["covariances"],
             )
         except Exception as e:
             stack_trace = traceback.format_exc()
@@ -120,6 +178,7 @@ class Gui(Observer):
             raise
 
     def load_splats(self) -> None:
+        horizontal_rule = self.gui_api.add_markdown("---")
         loading_md = self.gui_api.add_markdown("*Loading Frames...*")
         progress_bar = self.gui_api.add_progress_bar(0.0, animated=True)
         seconds_per_frame = 1.0 / self.state.fps
@@ -132,19 +191,15 @@ class Gui(Observer):
                 progress_bar.value = ((frame+1)/self.state.fps) * 100
             except Exception:
                 break
+            
+            if not self.state.has_animation:
+                break
         self.state.change_to_frame(self.frame_slider.value)
         progress_bar.remove()
         loading_md.remove()
+        horizontal_rule.remove()
 
     def reload_splats(self) -> None:
-        if not self.check_functions_defined():
-            with self.gui_api.add_modal("⚠ Please generate functions first!") as popout:
-                close_btn = self.gui_api.add_button("X", color="red")
-                @close_btn.on_click
-                def _(_) -> None:
-                    popout.close()
-                raise Exception()
-        
         self.state.remove_gs_handles()
         self.load_splats()
         self.state.change_to_frame(self.frame_slider.value)
@@ -172,7 +227,7 @@ class Gui(Observer):
             duration_slider = self.gui_api.add_slider(
                 label="Duration (s)",
                 min=1,
-                max=5,
+                max=10,
                 step=1,
                 initial_value=self.state.animation_duration
             )
@@ -192,12 +247,13 @@ class Gui(Observer):
                 exec(centers_fn, globals())
                 exec(rgbs_fn, globals())
                 exec(opacities_fn, globals())
-                self.reload_splats()
 
                 self.state.centers_fn_md = self.as_code_block(centers_fn)
                 self.state.rgbs_fn_md = self.as_code_block(rgbs_fn)
                 self.state.opacities_fn_md = self.as_code_block(opacities_fn)
                 self.state.has_animation = True
+
+                self.reload_splats()
 
             close_btn = self.gui_api.add_button("⨯", color="red")
             @close_btn.on_click
@@ -240,8 +296,13 @@ class Gui(Observer):
 
     def open_inspector(self):
         with self.gui_api.add_modal("🔎 Function Inspector") as popout:
+            self.gui_api.add_markdown("Centers")
             self.gui_api.add_markdown(self.state.centers_fn_md)
+            self.gui_api.add_markdown("---")
+            self.gui_api.add_markdown("RGBs")
             self.gui_api.add_markdown(self.state.rgbs_fn_md)
+            self.gui_api.add_markdown("---")
+            self.gui_api.add_markdown("Opacities")
             self.gui_api.add_markdown(self.state.opacities_fn_md)
 
             close_btn = self.gui_api.add_button("⨯", color="red")
@@ -269,12 +330,6 @@ class Gui(Observer):
             self.frame_slider.value = 0
             time.sleep((1.0/self.state.fps) * self.speed_to_sleep_factor(self.state.speed))
 
-
-    def check_functions_defined(self) -> bool:
-        fn_names = ["compute_centers", "compute_rgbs", "compute_opacities"]
-        return all(name in globals() for name in fn_names)
-
-
     def speed_to_sleep_factor(self, speed: str) -> float:
         if speed == "0.25x":
             return 4.0
@@ -297,6 +352,7 @@ class Gui(Observer):
     def generate_functions(self):
         prompt = self.build_prompt()
 
+        horizontal_rule = self.gui_api.add_markdown("---")
         status = self.gui_api.add_markdown("*Analyzing Prompt...*")
         progress = self.gui_api.add_progress_bar(value=0, animated=True)
 
@@ -336,11 +392,13 @@ class Gui(Observer):
 
         progress.remove()
         status.remove()
+        horizontal_rule.remove()
 
         return centers_function_code, rgbs_function_code, opacities_function_code
 
 
     def generate_functions_with_feedback(self, feedback: str):
+        horizontal_rule = self.gui_api.add_markdown("---")
         status = self.gui_api.add_markdown("*Implementing Feedback...*")
         progress = self.gui_api.add_progress_bar(value=0, animated=True)
 
@@ -371,5 +429,6 @@ class Gui(Observer):
         progress.value = 100
         progress.remove()
         status.remove()
+        horizontal_rule.remove()
 
         return centers_function_code, rgbs_function_code, opacities_function_code
