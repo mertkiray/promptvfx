@@ -1,4 +1,5 @@
 from pathlib import Path
+import tempfile
 import re
 import time
 import traceback
@@ -41,11 +42,8 @@ class Gui(Observer):
             self.prompt_btn = self.gui_api.add_button("Prompt", icon=viser.Icon.ROBOT)
             self.prompt_btn.on_click(lambda _: self.open_prompt())
 
-            self.inspect_btn = self.gui_api.add_button("Inspect Functions", icon=viser.Icon.FUNCTION)
+            self.inspect_btn = self.gui_api.add_button("Functions", icon=viser.Icon.FUNCTION)
             self.inspect_btn.on_click(lambda _: self.open_inspector())
-
-            self.reload_btn = server.gui.add_button("Reload Frames", icon=viser.Icon.RESTORE)
-            self.reload_btn.on_click(lambda _: self.reload_splats())
 
             self.fps_btn_grp = self.gui_api.add_button_group(f"FPS ({self.state.fps})", ["8", "24", "60"])
             self.fps_btn_grp.on_click(lambda _: self.update_fps())
@@ -86,15 +84,29 @@ class Gui(Observer):
                 self.vase_btn.on_click(lambda _: self.change_to_splat(Path("data/vase.splat")))
 
                 self.upload_btn = self.gui_api.add_upload_button("Upload", icon=viser.Icon.UPLOAD, color="teal")
+                self.upload_btn.on_upload(lambda _: self.process_upload())
 
     def update(self):
-        self.title_md.content = f"Title: **{self.state.animation_title}**"
+        self.title_md.content = f"Title: **{self.state.animation_title} ({self.state.animation_duration}s)**"
         self.frame_slider.max = self.state.total_frames-1
         self.fps_btn_grp.label = f"FPS ({self.state.fps})"
         self.speed_btn_grp.label = f"Speed ({self.state.speed})"
         self.fps_btn_grp.disabled = False
 
+    def process_upload(self):
+        file = self.upload_btn.value
+        with tempfile.NamedTemporaryFile(suffix=file.name) as temp_file:
+            temp_file.write(file.content)
+            temp_file_path = Path(temp_file.name)
+            self.change_to_splat(temp_file_path)
+
+    def terminate_animation(self):
+        self.state.animation_running = False
+        self.frame_slider.value = 0
+        self.update_frame()
+
     def change_to_splat(self, splat_path: Path):
+        self.terminate_animation()
         self.state.splat_path = splat_path
         self.reload_splats()
 
@@ -120,9 +132,7 @@ class Gui(Observer):
         self.state.speed = self.speed_btn_grp.value
 
     def update_fps(self):
-        self.state.animation_running = False # Ensure the animation is paused
-        self.frame_slider.value = 0
-        self.update_frame()
+        self.terminate_animation()
         self.state.fps = int(self.fps_btn_grp.value)
         self.reload_splats()
 
@@ -178,7 +188,6 @@ class Gui(Observer):
             raise
 
     def load_splats(self) -> None:
-        horizontal_rule = self.gui_api.add_markdown("---")
         loading_md = self.gui_api.add_markdown("*Loading Frames...*")
         progress_bar = self.gui_api.add_progress_bar(0.0, animated=True)
         seconds_per_frame = 1.0 / self.state.fps
@@ -197,7 +206,6 @@ class Gui(Observer):
         self.state.change_to_frame(self.frame_slider.value)
         progress_bar.remove()
         loading_md.remove()
-        horizontal_rule.remove()
 
     def reload_splats(self) -> None:
         self.state.remove_gs_handles()
@@ -352,7 +360,6 @@ class Gui(Observer):
     def generate_functions(self):
         prompt = self.build_prompt()
 
-        horizontal_rule = self.gui_api.add_markdown("---")
         status = self.gui_api.add_markdown("*Analyzing Prompt...*")
         progress = self.gui_api.add_progress_bar(value=0, animated=True)
 
@@ -392,13 +399,11 @@ class Gui(Observer):
 
         progress.remove()
         status.remove()
-        horizontal_rule.remove()
 
         return centers_function_code, rgbs_function_code, opacities_function_code
 
 
     def generate_functions_with_feedback(self, feedback: str):
-        horizontal_rule = self.gui_api.add_markdown("---")
         status = self.gui_api.add_markdown("*Implementing Feedback...*")
         progress = self.gui_api.add_progress_bar(value=0, animated=True)
 
@@ -429,6 +434,5 @@ class Gui(Observer):
         progress.value = 100
         progress.remove()
         status.remove()
-        horizontal_rule.remove()
 
         return centers_function_code, rgbs_function_code, opacities_function_code
