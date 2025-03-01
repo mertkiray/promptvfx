@@ -1,11 +1,17 @@
 from __future__ import annotations
+
 import time
+from copy import deepcopy
 from pathlib import Path
+from types import ModuleType
 from typing import TypedDict
+
 import numpy as np
 import numpy.typing as npt
 from plyfile import PlyData
+
 from src.viser import transforms as tf
+
 
 class SplatFile(TypedDict):
     """Data loaded from an antimatter15-style splat file."""
@@ -104,3 +110,19 @@ def load_splat(path: Path) -> SplatFile:
         return load_ply_file(path, center=True)
     else:
         raise SystemExit("Please provide a filepath to a .splat or .ply file.")
+
+
+def compute_splat_at_t(
+    t: float, splat: SplatFile, animation_functions: ModuleType
+) -> SplatFile:
+    tmp_splat = deepcopy(splat)
+
+    if np.isclose(t, 0.0):
+        return tmp_splat
+
+    return {
+        "centers": animation_functions.compute_centers(t, tmp_splat["centers"]),
+        "rgbs": animation_functions.compute_rgbs(t, tmp_splat["rgbs"]),
+        "opacities": animation_functions.compute_opacities(t, tmp_splat["opacities"]),
+        "covariances": tmp_splat["covariances"],
+    }

@@ -1,152 +1,210 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from pathlib import Path
-from splat_utils import SplatFile, load_splat
-from src.viser._scene_handles import GaussianSplatHandle
+from weakref import WeakSet
 
-class Observer:
-    def update(self):
+from animation import (
+    Animation,
+    AnimationEvolution,
+    import_animation_functions,
+    write_animation_functions,
+)
+from scene import Scene
+from splat_utils import SplatFile, compute_splat_at_t, load_splat
+from src.viser._scene_handles import GaussianSplatHandle
+from viser import GuiApi
+
+
+class Observer(ABC):
+    @abstractmethod
+    def update(self, changed_attribute_name: str):
         pass
+
 
 class Subject:
     def __init__(self):
-        self._observers: list[Observer] = []
+        self._observers: WeakSet[Observer] = WeakSet()
 
-    def attach(self, observer: Observer):
-        if observer not in self._observers:
-            self._observers.append(observer)
+    def attach(self, observer: Observer) -> None:
+        self._observers.add(observer)
 
-    def detach(self, observer: Observer):
-        if observer in self._observers:
-            self._observers.remove(observer)
-
-    def notify(self):
+    def notify(self, changed_attribute: str) -> None:
         for observer in self._observers:
-            observer.update()
+            observer.update(changed_attribute)
+
 
 class State(Subject):
-    def __init__(self):
+    def __init__(self, scene: Scene, gui_api: GuiApi):
         super().__init__()
-        self._splat_path: Path = Path("data/luigi.splat")
+
+        self.gui_api = gui_api
+        self.scene = scene
+
+        self._object_data: SplatFile
         self._fps: int = 8
-        self._speed: str = "1x"
-        self._splat: SplatFile = load_splat(self._splat_path)
-        self.background: GaussianSplatHandle
-        self._animation_name: str = "None"
-        self.animation_description: str = ""
-        self.temperature: float = 1.00
-        self._animation_duration: int = 1
-        self.centers_fn_md: str = "```\n```"
-        self.rgbs_fn_md: str = "```\n```"
-        self.opacities_fn_md: str = "```\n```"
-        self.frame_to_gs_handle: dict[int, GaussianSplatHandle] = {}
-        self.has_animation: bool = False
-        self.centers_summary: str = ""
-        self.rgbs_summary: str = ""
-        self.opacities_summary: str = ""
-        self.animation_running: bool = False
+        self._speed: float = 1.0
+        self._visible_frame: int = 0
+        self._background_visible: bool = True
+        self._active_animation: Animation = Animation()
+        self.animation_evolution = AnimationEvolution()
+        self.frame_to_handle: dict[int, GaussianSplatHandle] = {}
+        self.background_handle: GaussianSplatHandle | None = None
+        self.playing: bool = False
+
+        write_animation_functions(self.active_animation)
+        self.load_vase()
 
     @property
-    def splat_path(self) -> Path:
-        return self._splat_path
-    
-    @splat_path.setter
-    def splat_path(self, value: Path) -> None:
-        self._splat_path = value
-        self._splat = load_splat(value)
+    def object_data(self) -> SplatFile:
+        return self._object_data
+
+    @object_data.setter
+    def object_data(self, value: SplatFile) -> None:
+        self._object_data = value
+        self._reload_splats()
 
     @property
-    def animation_title(self) -> str:
-        return self._animation_name
+    def active_animation(self) -> Animation:
+        return self._active_animation
 
-    @animation_title.setter
-    def animation_title(self, value: str) -> None:
-        self._animation_name = value
-        self.notify()
-    
+    @active_animation.setter
+    def active_animation(self, animation: Animation) -> None:
+        self._active_animation = animation
+        self._reload_splats()
+        self.notify("animation")
+
     @property
-    def animation_duration(self) -> int:
-        return self._animation_duration
-    
-    @animation_duration.setter
-    def animation_duration(self, value: int) -> None:
-        self._animation_duration = value
-        self.notify()
+    def visible_frame(self) -> int:
+        return self._visible_frame
+
+    @visible_frame.setter
+    def visible_frame(self, value: int) -> None:
+        wrapped_value = value % self.total_frames
+        self.frame_to_handle[self.visible_frame].visible = False
+        self.frame_to_handle[wrapped_value].visible = True
+        self._visible_frame = wrapped_value
 
     @property
     def fps(self) -> int:
         return self._fps
-    
+
     @fps.setter
     def fps(self, value: int) -> None:
         self._fps = value
-        self.notify()
-        
+        self._reload_splats()
+        self.notify("fps")
+
     @property
-    def speed(self) -> str:
+    def speed(self) -> float:
         return self._speed
-    
+
     @speed.setter
-    def speed(self, value: str) -> None:
+    def speed(self, value: float) -> None:
         self._speed = value
-        self.notify()
+        self.notify("speed")
 
     @property
     def total_frames(self) -> int:
-        return self.fps * self.animation_duration
-
-
-    @property
-    def centers_context(self) -> str:
-        return f"""
-Initial prompt:
-{self.animation_description}
-
-Initial LLM Analysis:
-{self.centers_summary}
-
-Initial Python Function:
-{self.centers_fn_md}
-"""
+        return self.fps * self.active_animation.duration
 
     @property
-    def rgbs_context(self) -> str:
-        return f"""
-Initial prompt:
-{self.animation_description}
+    def background_visible(self) -> bool:
+        return self._background_visible
 
-Initial LLM Analysis:
-{self.rgbs_summary}
-
-Initial Python Function:
-{self.rgbs_fn_md}
-"""
-    
-    @property
-    def opacities_context(self) -> str:
-        return f"""
-Initial prompt:
-{self.animation_description}
-
-Initial LLM Analysis:
-{self.opacities_summary}
-
-Initial Python Function:
-{self.opacities_fn_md}
-"""
-
-
-    def change_to_frame(self, frame: int):
-        for i, gs_handle in self.frame_to_gs_handle.items():
-            if i == frame:
-                gs_handle.visible = True
-            else:
-                gs_handle.visible = False
-
+    @background_visible.setter
+    def background_visible(self, value: bool) -> None:
+        self._background_visible = value
+        if self.background_handle:
+            self.background_handle.visible = value
 
     def remove_gs_handles(self) -> None:
-        for _, gs_handle in self.frame_to_gs_handle.items():
+        for gs_handle in self.frame_to_handle.values():
             if gs_handle:
                 gs_handle.remove()
-                del gs_handle
-        self.frame_to_gs_handle = {}
+        self.frame_to_handle.clear()
+
+    def next_frame(self):
+        max_frame = self.total_frames - 1
+        if self.visible_frame == max_frame:
+            self.visible_frame = 0
+        else:
+            self.visible_frame = self.visible_frame + 1
+
+    def load_vase(self) -> None:
+        self._load_scene(
+            Path("data/objects/vase.splat"),
+            Path("data/backgrounds/vase_bg.splat"),
+            (-0.39, 0.04, -1.33),
+        )
+
+    def load_bulldozer(self) -> None:
+        self._load_scene(
+            Path("data/objects/bulldozer.splat"),
+            Path("data/backgrounds/bulldozer_bg.splat"),
+            (-0.05, 0.3, -0.48),
+        )
+
+    def load_bear(self) -> None:
+        self._load_scene(
+            Path("data/objects/bear.splat"),
+            Path("data/backgrounds/bear_bg.splat"),
+            (-2.23, 0.36, -0.16),
+        )
+
+    def load_horse(self) -> None:
+        self._load_scene(
+            Path("data/objects/horse.splat"),
+            Path("data/backgrounds/horse_bg.splat"),
+            (-0.82, -2.375, 0.785),
+        )
+
+    def _reload_splats(self) -> None:
+        self.remove_gs_handles()
+        write_animation_functions(self.active_animation)
+        self._add_animation_splats()
+        self.visible_frame = 0
+
+    def _add_animation_splats(self) -> None:
+        splat = self.object_data
+        assert splat is not None
+
+        loading_md = self.gui_api.add_markdown("*Loading Frames...*")
+        progress_bar = self.gui_api.add_progress_bar(0.0, animated=True)
+
+        animation_functions = import_animation_functions()
+        seconds_per_frame = 1.0 / self.fps
+        try:
+            for frame in range(self.total_frames):
+                t = frame * seconds_per_frame
+                splat_at_t = compute_splat_at_t(t, splat, animation_functions)
+                gs_handle = self.scene.add_splat(f"splat_at_{t}", splat_at_t)
+                gs_handle.visible = frame == self.visible_frame
+                self.frame_to_handle[frame] = gs_handle
+                progress_bar.value = ((frame + 1) / self.fps) * 100
+        except:
+            progress_bar.remove()
+            loading_md.remove()
+            raise
+
+        progress_bar.remove()
+        loading_md.remove()
+
+    def _load_scene(
+        self, obj_path: Path, bg_path: Path, bg_position: tuple[float, float, float]
+    ) -> None:
+        if self.background_handle:
+            self.background_handle.remove()
+
+        status = self.gui_api.add_markdown("*Loading Background...*")
+        progress = self.gui_api.add_progress_bar(33, animated=True)
+        bg_data = load_splat(bg_path)
+        progress.value = 66
+        self.background_handle = self.scene.add_splat(
+            "splat_background", bg_data, bg_position
+        )
+        self.background_handle.visible = self.background_visible
+        progress.remove()
+        status.remove()
+
+        self.object_data = load_splat(obj_path)

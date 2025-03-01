@@ -44,9 +44,9 @@ def run_code_checks(
 
     success = True
 
-    assert (
-        not skip_format_checks or not skip_type_checks
-    ), "Cannot skip format and type tests at the same time."
+    assert not skip_format_checks or not skip_type_checks, (
+        "Cannot skip format and type tests at the same time."
+    )
     tests = []
     if not skip_format_checks:
         tests += FORMAT_TESTS

@@ -124,9 +124,9 @@ class WebsockMessageHandler:
         callback: Callable[[ClientId, TMessage], None | Coroutine] | None = None,
     ):
         """Unregister a handler for a particular message type."""
-        assert (
-            message_cls in self._incoming_handlers
-        ), "Tried to unregister a handler that hasn't been registered."
+        assert message_cls in self._incoming_handlers, (
+            "Tried to unregister a handler that hasn't been registered."
+        )
         if callback is None:
             self._incoming_handlers.pop(message_cls)
         else:
