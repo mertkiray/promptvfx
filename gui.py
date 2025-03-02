@@ -139,14 +139,14 @@ class Gui(Observer):
             )
 
             with self.api.add_folder("🔥"):
-                design_temperatur_slider = self.api.add_slider(
+                design_temperature_slider = self.api.add_slider(
                     label="Design Temperature",
                     min=0.00,
                     max=2.00,
                     step=0.01,
                     initial_value=1.0,
                 )
-                coding_temperatur_slider = self.api.add_slider(
+                coding_temperature_slider = self.api.add_slider(
                     label="Code Temperature",
                     min=0.00,
                     max=2.00,
@@ -157,7 +157,7 @@ class Gui(Observer):
             with self.api.add_folder("👁️"):
                 vision_angles_dropdown = self.api.add_dropdown(
                     "Vision",
-                    options=["none", "front", "front + back + sides", "all"],
+                    options=["none", "front-left", "front + back + sides", "all"],
                     initial_value="none",
                 )
                 auto_sample_number = self.api.add_number("Auto Samples", 1, min=1)
@@ -167,18 +167,20 @@ class Gui(Observer):
 
             @generate_btn.on_click
             def _(event: viser.GuiEvent) -> None:
+                client = event.client
+                assert client is not None
+
                 if not description_txt.value:
+                    client.add_notification("⚠", "Empty Description", auto_close=True, color="yellow")
                     return
 
                 popout.close()
-                client = event.client
-                assert client is not None
                 generator_config = GeneratorConfig(
                     animation_title=title_txt.value,
                     animation_description=description_txt.value,
                     animation_duration=duration_slider.value,
-                    design_temperature=design_temperatur_slider.value,
-                    code_temperature=coding_temperatur_slider.value,
+                    design_temperature=design_temperature_slider.value,
+                    code_temperature=coding_temperature_slider.value,
                     vision_angles=self._vision_angles_from_dropdown(
                         vision_angles_dropdown.value
                     ),
@@ -202,9 +204,12 @@ class Gui(Observer):
             improve_btn = self.api.add_button("⮞ Submit")
 
             @improve_btn.on_click
-            def _(_) -> None:
-                if not input_txt.value or not self.generator:
+            def _(event: viser.GuiEvent) -> None:
+                if not input_txt.value:
+                    assert event.client is not None
+                    event.client.add_notification("⚠", "Empty Feedback", auto_close=True, color="yellow")
                     return
+                assert self.generator is not None
                 popout.close()
                 self.generator.apply_feedback(input_txt.value)
                 self.state.active_animation = self.generator.output.final_animation
@@ -221,19 +226,19 @@ class Gui(Observer):
                 for idx, animation in enumerate(
                     self.state.animation_evolution.auto_sampled_animations
                 ):
-                    self.api.add_button(f"Sample {idx}").on_click(
+                    self.api.add_button(f"Auto-Sample {idx+1}").on_click(
                         lambda _, anim=animation: change_and_close(anim, popout)
                     )
                 for idx, animation in enumerate(
                     self.state.animation_evolution.auto_improved_animations
                 ):
-                    self.api.add_button(f"Improve {idx}").on_click(
+                    self.api.add_button(f"Auto-Improve {idx+1}").on_click(
                         lambda _, anim=animation: change_and_close(anim, popout)
                     )
                 for idx, animation in enumerate(
                     self.state.animation_evolution.feedback_to_animation.values()
                 ):
-                    self.api.add_button(f"Feedback {idx}").on_click(
+                    self.api.add_button(f"Feedback-Improve {idx+1}").on_click(
                         lambda _, anim=animation: change_and_close(anim, popout)
                     )
 
@@ -301,8 +306,8 @@ class Gui(Observer):
 
     def _vision_angles_from_dropdown(self, dropdown_value: str) -> list[VisionAngle]:
         match dropdown_value:
-            case "front":
-                return ["front"]
+            case "front-left":
+                return ["front-left"]
             case "front + back + sides":
                 return ["front", "back", "left", "right"]
             case "all":

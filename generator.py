@@ -65,9 +65,10 @@ class Generator:
         opacities_code = animation.opacities_code
 
         status = self.gui_api.add_markdown("")
+        progress = self.gui_api.add_progress_bar(value=0, animated=True)
 
         status.content = "*Rendering Current Snapshots*"
-        progress = self.gui_api.add_progress_bar(value=100, animated=True)
+        progress.value = 100
         self.state.active_animation = animation
         time.sleep(1)
         self.state.visible_frame = 0
