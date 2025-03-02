@@ -9,34 +9,56 @@ The animation can be applied to any object.
 Do not prescribe the object new textures.
 Do not insert any new assets or particles.
 Do not concern yourself with sound.
+
+**Notes**:
+- If you additionally receive images, then you can use those to generate a more informed answer, specific to the object that should be animated.
+- Else your answer should be general enough to work with any object.
 """.strip()
 
-CENTERS_SUMMARY_SYSTEM_MESSAGE = """
-You are an expert in animations for 3D Gaussian Splatting object.
-The user will give you a abstract breakdown of an animation.
+CENTERS_BEHAVIOR_SYSTEM_MESSAGE = """
+You are an expert in animating the geometry of a 3D Gaussian Splatting object. \
+From an abstract breakdown of an animation you will extract the behavior of the geometry for a 3D Gaussian Splatting object.
+
 **Goal**:
-- Interpret how this abstract description would impact the center positions of all individual gaussians.
-- If parts of a phase cannot be implemented through moving the center positions, then just ignore it.
+- Decide for each phase of the breakdown, which points can even be realized by shifting the gaussian center positions only.
+- If parts of a phase cannot be implemented through just moving the center positions, then state that the centers should stay unchanged.
+- For the phases that can be implemented state clearly and simply how the center positions of all individual gaussians would behave.
 - Do not justify your analysis.
+
+**Notes**:
+- If you additionally receive images, then you can use those to generate a more informed answer, specific to the object that should be animated.
+- Else your answer should be general enough to work with any object.
 """.strip()
 
-RGBS_SUMMARY_SYSTEM_MESSAGE = """
-You are an expert in animations for 3D Gaussian Splatting object.
-The user will give you a abstract breakdown of an animation.
+RGBS_BEHAVIOR_SYSTEM_MESSAGE = """
+You are an expert in animating the color of a 3D Gaussian Splatting object. \
+From an abstract breakdown of an animation you will extract the behavior of the color for a 3D Gaussian Splatting object.
+
 **Goal**:
-- Interpret how this abstract description would impact the colors of all individual gaussians.
+- Decide for each phase of the breakdown, which points can even be realized by only updating the colors of all individual gaussians.
+- If parts of a phase cannot be implemented through just changing the colors, then state that the colors should stay unchanged.
+- For the phases that can be implemented state clearly and simply how the colors of all individual gaussians would behave.
 - Ignore Opacity/Transparency.
-- If parts of a phase cannot be implemented through changing only the colors, then just ignore it.
 - Do not justify your analysis.
+
+**Notes**:
+- If you additionally receive images, then you can use those to generate a more informed answer, specific to the object that should be animated.
+- Else your answer should be general enough to work with any object.
 """.strip()
 
-OPACITIES_SUMMARY_SYSTEM_MESSAGE = """
-You are an expert in animations for 3D Gaussian Splatting object.
-The user will give you a abstract breakdown of an animation.
+OPACITIES_BEHAVIOR_SYSTEM_MESSAGE = """
+You are an expert in animating the opacity of a 3D Gaussian Splatting object. \
+From an abstract breakdown of an animation you will extract the behavior of the opacity for a 3D Gaussian Splatting object.
+
 **Goal**:
-- Interpret how this abstract description would impact the opacities of all individual gaussians.
-- If parts of a phase cannot be implemented through changing only the opacities, then just ignore it.
+- Decide for each phase of the breakdown, which points can even be realized by only updating the opacities of all individual gaussians.
+- If parts of a phase cannot be implemented through just changing the opacities, then state that the opacities should stay unchanged.
+- For the phases that can be implemented state clearly and simply how the opacities of all individual gaussians would behave.
 - Do not justify your analysis.
+
+**Notes**:
+- If you additionally receive images, then you can use those to generate a more informed answer, specific to the object that should be animated.
+- Else your answer should be general enough to work with any object.
 """.strip()
 
 # ======================================================================================
@@ -44,7 +66,7 @@ The user will give you a abstract breakdown of an animation.
 # ======================================================================================
 
 CENTERS_CODE_SYSTEM_MESSAGE = '''
-You an expert coding assistant for converting a structured breakdown of an animation into a python function that computes updated center positions for all individual gaussians of an unknown 3D Gaussian Splatting object.
+You an expert coding assistant for implementing a geometry behavior breakdown of an animation into a python function that computes updated center positions for all individual gaussians of a 3D Gaussian Splatting object.
 To help you, use the following template python function (delimited with triple backticks):
 
 ```
@@ -77,7 +99,11 @@ def compute_centers(t: float, centers: np.ndarray) -> np.ndarray:
     return new_centers
 ```
 
-**Notes**:
+**Vision Notes**:
+- If you additionally receive images, then you can use those to generate a more informed function, specific to the object that should be animated.
+- Else your code should be general enough to work with any object.
+
+**Coding Notes**:
 - Keep the docstring.
 - Each phase should last until `t<=end_of_phase`
 - For each Phase after the first one, first use recursion to get the centers of the the final second from the previous frame before applying transformations specific to the current phase.
@@ -87,7 +113,7 @@ def compute_centers(t: float, centers: np.ndarray) -> np.ndarray:
 '''.strip()
 
 RGBS_CODE_SYSTEM_MESSAGE = '''
-You an expert coding assistant for converting a structured breakdown of an animation into a python function that computes updated rgb values for all individual gaussians of an unknown 3D Gaussian Splatting object.
+You an expert coding assistant for implementing a color behavior breakdown of an animation into a python function that computes updated rgb values for all individual gaussians of a 3D Gaussian Splatting object.
 To help you, use the following template python function (delimited with triple backticks):
 
 ```
@@ -117,7 +143,11 @@ def compute_rgbs(t: float, rgbs: np.ndarray) -> np.ndarray:
     return new_rgbs
 ```
 
-**Notes**:
+**Vision Notes**:
+- If you additionally receive images, then you can use those to generate a more informed function, specific to the object that should be animated.
+- Else your code should be general enough to work with any object.
+
+**Coding Notes**:
 - Keep the docstring.
 - Each phase should last until `t<=end_of_phase`
 - For each Phase after the first one, first use recursion to get the rgbs of the the final second from the previous frame before applying transformations specific to the current phase.
@@ -129,7 +159,7 @@ def compute_rgbs(t: float, rgbs: np.ndarray) -> np.ndarray:
 '''.strip()
 
 OPACITIES_CODE_SYSTEM_MESSAGE = '''
-You an expert coding assistant for converting a structured breakdown of an animation into a python function that computes updated opacity values for all individual gaussians of an unknown 3D Gaussian Splatting object.
+You an expert coding assistant for implementing a opacity behavior breakdown of an animation into a python function that computes updated opacity values for all individual gaussians of a 3D Gaussian Splatting object.
 To help you, use the following template python function (delimited with triple backticks):
 
 ```
@@ -162,7 +192,11 @@ def compute_opacities(t: float, opacities: np.ndarray) -> np.ndarray:
     return new_opacities
 ```
 
-**Notes**:
+**Vision Notes**:
+- If you additionally receive images, then you can use those to generate a more informed function, specific to the object that should be animated.
+- Else your code should be general enough to work with any object.
+
+**Coding Notes**:
 - Keep the docstring.
 - Each phase should last until `t<=end_of_phase`
 - For each Phase after the first one, first use recursion to get the opacities of the the final second from the previous frame before applying transformations specific to the current phase.
@@ -308,7 +342,7 @@ AUTO_IMPROVE_USER_TEMPLATE = """
 CENTERS_FEEDBACK_SYSTEM_MESSAGE = """
 Enhance a given Python function to better align a Gaussian splatting object's animation with its intended description, focusing on modifying the center positions of Gaussians.
 
-To achieve this, review the provided animation description, existing function code, image snapshots and feedback. \
+To achieve this, review the provided animation description, existing function code, feedback and image snapshots. \
 Identify discrepancies between the planned animation and the observed results. \
 Take the feedback as a hint to what parts of the animation especially need adjustments. \
 Adjust the function code to update the geometry via strategic changes to Gaussian center positions, aiming for a visual outcome that closely matches the description.
@@ -351,7 +385,7 @@ Adjust the function code to update the geometry via strategic changes to Gaussia
 RGBS_FEEDBACK_SYSTEM_MESSAGE = """
 Enhance a given Python function to better align a Gaussian splatting object's animation with its intended description, focusing on modifying the rgb values of Gaussians.
 
-To achieve this, review the provided animation description, existing function code, image snapshots and feedback. \
+To achieve this, review the provided animation description, existing function code, feedback and image snapshots. \
 Identify discrepancies between the planned animation and the observed results. \
 Take the feedback as a hint to what parts of the animation especially need adjustments. \
 Adjust the function code to update the coloring via strategic changes to Gaussian rgb values, aiming for a visual outcome that closely matches the description.
@@ -394,7 +428,7 @@ Adjust the function code to update the coloring via strategic changes to Gaussia
 OPACITIES_FEEDBACK_SYSTEM_MESSAGE = """
 Enhance a given Python function to better align a Gaussian splatting object's animation with its intended description, focusing on modifying the opacities of Gaussians.
 
-To achieve this, review the provided animation description, existing function code, image snapshots and feedback. \
+To achieve this, review the provided animation description, existing function code, feedback and image snapshots. \
 Identify discrepancies between the planned animation and the observed results. \
 Take the feedback as a hint to what parts of the animation especially need adjustments. \
 Adjust the function code to update the opacity via strategic changes to Gaussian opacity values, aiming for a visual outcome that closely matches the description.

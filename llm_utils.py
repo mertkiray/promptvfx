@@ -80,7 +80,7 @@ def generate_abstract_summary(
 def generate_centers_behavior(
     abstract_summary: str, temperature: float, images: list[str]
 ) -> str:
-    system_message = prompts.CENTERS_SUMMARY_SYSTEM_MESSAGE
+    system_message = prompts.CENTERS_BEHAVIOR_SYSTEM_MESSAGE
     prompt = abstract_summary
     return _prompt_llm(prompt, system_message, temperature, images)
 
@@ -88,7 +88,7 @@ def generate_centers_behavior(
 def generate_rgbs_behavior(
     abstract_summary: str, temperature: float, images: list[str]
 ) -> str:
-    system_message = prompts.RGBS_SUMMARY_SYSTEM_MESSAGE
+    system_message = prompts.RGBS_BEHAVIOR_SYSTEM_MESSAGE
     prompt = abstract_summary
     return _prompt_llm(prompt, system_message, temperature, images)
 
@@ -96,7 +96,7 @@ def generate_rgbs_behavior(
 def generate_opacities_behavior(
     abstract_summary: str, temperature: float, images: list[str]
 ) -> str:
-    system_message = prompts.OPACITIES_SUMMARY_SYSTEM_MESSAGE
+    system_message = prompts.OPACITIES_BEHAVIOR_SYSTEM_MESSAGE
     prompt = abstract_summary
     return _prompt_llm(prompt, system_message, temperature, images)
 
