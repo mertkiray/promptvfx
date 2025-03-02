@@ -154,7 +154,7 @@ class Gui(Observer):
                     initial_value=1.0,
                 )
 
-            with self.api.add_folder("👁️"):
+            with self.api.add_folder("👁️", visible=False):
                 vision_angles_dropdown = self.api.add_dropdown(
                     "Vision",
                     options=["none", "front", "front + back + sides", "all"],
@@ -191,7 +191,7 @@ class Gui(Observer):
                 self.generator = generator
                 self.state.animation_evolution = generator.output
                 self.state.active_animation = generator.output.final_animation
-                self.feedback_btn.disabled = False
+                self.feedback_btn.disabled = True
                 self.details_btn.disabled = False
 
             self._add_close_popout_btn(popout)
