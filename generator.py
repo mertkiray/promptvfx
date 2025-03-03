@@ -32,7 +32,6 @@ class GeneratorConfig:
     code_temperature: float
     vision_angles: list[VisionAngle]
     n_samples: int
-    n_improves: int
 
 
 class Generator:
@@ -52,170 +51,184 @@ class Generator:
             config.animation_title, config.animation_duration
         )
 
-    def run(self) -> None:
-        self._auto_sample()
-        self._auto_improve()
+    def auto_sample(self) -> None:
+        status = self.gui_api.add_markdown("*Auto Sampling...*")
+        sub_status = self.gui_api.add_markdown("")
 
-    def apply_feedback(self, feedback: str) -> None:
-        animation = self.output.final_animation
+        # Step 1: Get Vision Images
+        sub_status.content = "*Rendering Vision Angles...*"
+        vision_images = self._render_vision_angles()
+
+        # Step 2: Generate Samples With Score
+        samples: list[Animation] = []
+        n_samples = self.config.n_samples
+        for i in range(n_samples):
+            sub_status.content = f"*Generating Sample {i + 1}/{n_samples}...*"
+            sample = self._generate_animation(vision_images)
+            samples.append(sample)
+            if n_samples > 1:
+                sub_status.content = f"*Scoring Sample {i+1}...*"
+                progress = self.gui_api.add_progress_bar(100, animated=True)
+                sample_dir = f"render/{self.subdirectory}/auto_sample/sample_{i}"
+                score = self._score_animation(sample, sample_dir)
+                sample.score = score
+                progress.remove()
+        self.output.auto_sampled_animations = samples
+
+        # Step 3: Choose Best Sample
+        score_to_animation = {sample.score: sample for sample in samples}
+        max_score = max(score_to_animation.keys())
+        self.output.final_animation = score_to_animation[max_score]
+
+        sub_status.remove()
+        status.remove()
+
+    def auto_improve(self) -> None:
+        status = self.gui_api.add_markdown("*Auto Improving...*")
+        sub_status = self.gui_api.add_markdown("")
+
+        base_animation = self.output.final_animation
+        description = self.config.animation_description
         code_temperature = self.config.code_temperature
-        description = animation.description
-        centers_code = animation.centers_code
-        rgbs_code = animation.rgbs_code
-        opacities_code = animation.opacities_code
 
-        status = self.gui_api.add_markdown("")
-        progress = self.gui_api.add_progress_bar(value=0, animated=True)
+        ## Step 1: Render Base Animation
+        sub_status.content = "*Rendering Base Animation...*"
+        self.state.active_animation = base_animation
+        time.sleep(1)
+        self.state.visible_frame = 0
+        time.sleep(1)
+        renderer = Renderer(self.client, self.gui_api, self.state)
+        i = len(self.output.auto_improved_animations)
+        base_animation_dir = f"render/{self.subdirectory}/auto_improve/base_animation_{i}"
+        base_animation_frames = renderer.render_first_frames(base_animation_dir)
 
-        status.content = "*Rendering Current Snapshots*"
-        progress.value = 100
-        self.state.active_animation = animation
+        ## Step 2.1: Improve `compute_centers`
+        sub_status.content = "*Improving `compute_centers`...*"
+        progress = self.gui_api.add_progress_bar(1, animated=True)
+        base_centers_code = base_animation.centers_code
+        improved_centers_code = ""
+        while True:
+            improved_centers_code = generate_auto_improved_centers_code(
+                base_centers_code, base_animation_frames, description, code_temperature
+            )
+            if self._is_working_centers_code(improved_centers_code):
+                break
+
+        ## Step 2.2: Improve `compute_rgbs`
+        sub_status.content = "*Improving `compute_rgbs`...*"
+        progress.value = 34
+        base_rgbs_code = base_animation.rgbs_code
+        improved_rgbs_code = ""
+        while True:
+            improved_rgbs_code = generate_auto_improved_rgbs_code(
+                base_rgbs_code, base_animation_frames, description, code_temperature
+            )
+            if self._is_working_rgbs_code(improved_rgbs_code):
+                break
+
+        ## Step 2.3: Improve `compute_opacities`
+        sub_status.content = "*Improving `compute_opacities`...*"
+        progress.value = 67
+        base_opacities_code = base_animation.opacities_code
+        improved_opacities_code = ""
+        while True:
+            improved_opacities_code = generate_auto_improved_opacities_code(
+                base_opacities_code, base_animation_frames, description, code_temperature
+            )
+            if self._is_working_opacities_code(improved_opacities_code):
+                break
+        progress.remove()
+
+        # Step 3: Save Improved Animation
+        improved_animation = Animation(
+            title=base_animation.title,
+            description=base_animation.description,
+            duration=base_animation.duration,
+            abstract_summary=base_animation.abstract_summary,
+            centers_behavior=base_animation.centers_behavior,
+            rgbs_behavior=base_animation.rgbs_behavior,
+            opacities_behavior=base_animation.opacities_behavior,
+            centers_code=improved_centers_code,
+            rgbs_code=improved_rgbs_code,
+            opacities_code=improved_opacities_code,
+        )
+        self.output.auto_improved_animations.append(improved_animation)
+        self.output.final_animation = improved_animation
+
+        sub_status.remove()
+        status.remove()
+
+    def feedback_improve(self, feedback: str) -> None:
+        status = self.gui_api.add_markdown("*Feedback Improving...*")
+        sub_status = self.gui_api.add_markdown("")
+
+        base_animation = self.output.final_animation
+        code_temperature = self.config.code_temperature
+        description = self.config.animation_description
+        
+        ## Step 1: Render Base Animation
+        sub_status.content = "*Rendering Base Animation...*"
+        self.state.active_animation = base_animation
         time.sleep(1)
         self.state.visible_frame = 0
         time.sleep(1)
         renderer = Renderer(self.client, self.gui_api, self.state)
         image_dir = f"render/{self.subdirectory}/feedback/input_{len(self.output.feedback_to_animation)}"
-        first_frames = renderer.render_first_frames(8, image_dir)
+        first_frames = renderer.render_first_frames(image_dir)
 
-        ## Step 2: Improve `compute_centers`
-        status.content = "*Improving `compute_centers`*"
-        progress.value = 1
-        centers_code = animation.centers_code
+        ## Step 2.1: Improve `compute_centers`
+        sub_status.content = "*Improving `compute_centers`...*"
+        progress = self.gui_api.add_progress_bar(1, animated=True)
+        base_centers_code = base_animation.centers_code
         improved_centers_code = ""
         while True:
             improved_centers_code = generate_feedback_improved_centers_code(
-                feedback, centers_code, first_frames, description, code_temperature
+                feedback, base_centers_code, first_frames, description, code_temperature
             )
-            if self._test_centers_code(improved_centers_code):
+            if self._is_working_centers_code(improved_centers_code):
                 break
-        ## Step 3: Improve `compute_rgbs`
-        status.content = "*Improving `compute_rgbs`...*"
+
+        ## Step 2.2: Improve `compute_rgbs`
+        sub_status.content = "*Improving `compute_rgbs`...*"
         progress.value = 34
-        rgbs_code = animation.rgbs_code
+        base_rgbs_code = base_animation.rgbs_code
         improved_rgbs_code = ""
         while True:
             improved_rgbs_code = generate_feedback_improved_rgbs_code(
-                feedback, rgbs_code, first_frames, description, code_temperature
+                feedback, base_rgbs_code, first_frames, description, code_temperature
             )
-            if self._test_rgbs_code(improved_rgbs_code):
+            if self._is_working_rgbs_code(improved_rgbs_code):
                 break
-        ## Step 4: Improve `compute_opacities`
-        status.content = "*Improving `compute_opacities`...*"
+
+        ## Step 2.3: Improve `compute_opacities`
+        sub_status.content = "*Improving `compute_opacities`...*"
         progress.value = 67
-        opacities_code = animation.opacities_code
+        base_opacities_code = base_animation.opacities_code
         improved_opacities_code = ""
         while True:
             improved_opacities_code = generate_feedback_improved_opacities_code(
-                feedback, opacities_code, first_frames, description, code_temperature
+                feedback, base_opacities_code, first_frames, description, code_temperature
             )
-            if self._test_opacities_code(improved_opacities_code):
+            if self._is_working_opacities_code(improved_opacities_code):
                 break
-        progress.value = 100
-
         progress.remove()
-        status.remove()
 
-        animation_with_feedback = Animation(
-            title=animation.title,
-            abstract_summary=animation.abstract_summary,
-            centers_behavior=animation.centers_behavior,
-            rgbs_behavior=animation.rgbs_behavior,
-            opacities_behavior=animation.opacities_behavior,
+        # Step 3: Save Improved Animation
+        improved_animation = Animation(
+            title=base_animation.title,
+            duration=base_animation.duration,
+            abstract_summary=base_animation.abstract_summary,
+            centers_behavior=base_animation.centers_behavior,
+            rgbs_behavior=base_animation.rgbs_behavior,
+            opacities_behavior=base_animation.opacities_behavior,
             centers_code=improved_centers_code,
             rgbs_code=improved_rgbs_code,
             opacities_code=improved_opacities_code,
         )
 
-        self.output.feedback_to_animation[feedback] = animation_with_feedback
-        self.output.final_animation = animation_with_feedback
-
-    def _auto_sample(self) -> None:
-        status = self.gui_api.add_markdown("")
-        vision_images = self._render_vision_angles()
-        n_samples = self.config.n_samples
-        for i in range(n_samples):
-            status.content = f"*Generating Sample {i + 1}/{n_samples}*"
-            sample = self._generate_animation(vision_images)
-            self.output.auto_sampled_animations.append(sample)
-            if n_samples > 1:
-                image_dir = f"render/{self.subdirectory}/auto_sample/sample_{i}"
-                score = self._score_animation(sample, image_dir)
-                sample.score = score
-        status.remove()
-
-    def _auto_improve(self) -> None:
-        best_sample = self._get_best_sample()
-        n_improves = self.config.n_improves
-        if n_improves <= 0:
-            self.output.final_animation = best_sample
-
-        status = self.gui_api.add_markdown("")
-        sub_status = self.gui_api.add_markdown("")
-        progress = self.gui_api.add_progress_bar(100, animated=True)
-
-        description = self.config.animation_description
-        code_temperature = self.config.code_temperature
-
-        improved_animation = best_sample
-        for i in range(n_improves):
-            status.content = f"*Auto Improve Iteration {i + 1}/{n_improves}*"
-            ## Step 1: Render Current Animation
-            sub_status.content = "*Rendering Current Snapshots*"
-            self.state.active_animation = improved_animation
-            time.sleep(1)
-            self.state.visible_frame = 0
-            time.sleep(1)
-            renderer = Renderer(self.client, self.gui_api, self.state)
-            image_dir = f"render/{self.subdirectory}/auto_improve/input_{i}"
-            first_frames = renderer.render_first_frames(8, image_dir)
-            ## Step 2: Improve `compute_centers`
-            sub_status.content = "*Improving `compute_centers`*"
-            centers_code = improved_animation.centers_code
-            improved_centers_code = ""
-            while True:
-                improved_centers_code = generate_auto_improved_centers_code(
-                    centers_code, first_frames, description, code_temperature
-                )
-                if self._test_centers_code(improved_centers_code):
-                    break
-            ## Step 3: Improve `compute_rgbs`
-            sub_status.content = "*Improving `compute_rgbs`...*"
-            rgbs_code = improved_animation.rgbs_code
-            improved_rgbs_code = ""
-            while True:
-                improved_rgbs_code = generate_auto_improved_rgbs_code(
-                    rgbs_code, first_frames, description, code_temperature
-                )
-                if self._test_rgbs_code(improved_rgbs_code):
-                    break
-            ## Step 4: Improve `compute_opacities`
-            sub_status.content = "*Improving `compute_opacities`...*"
-            opacities_code = improved_animation.opacities_code
-            improved_opacities_code = ""
-            while True:
-                improved_opacities_code = generate_auto_improved_opacities_code(
-                    opacities_code, first_frames, description, code_temperature
-                )
-                if self._test_opacities_code(improved_opacities_code):
-                    break
-            # Set Impoved Animation
-            improved_animation = Animation(
-                title=best_sample.title,
-                description=best_sample.description,
-                duration=best_sample.duration,
-                abstract_summary=best_sample.abstract_summary,
-                centers_behavior=best_sample.centers_behavior,
-                rgbs_behavior=best_sample.rgbs_behavior,
-                opacities_behavior=best_sample.opacities_behavior,
-                centers_code=improved_centers_code,
-                rgbs_code=improved_rgbs_code,
-                opacities_code=improved_opacities_code,
-            )
-            self.output.auto_improved_animations.append(improved_animation)
-
+        self.output.feedback_to_animation[feedback] = improved_animation
         self.output.final_animation = improved_animation
 
-        progress.remove()
         sub_status.remove()
         status.remove()
 
@@ -259,7 +272,7 @@ class Generator:
             centers_code = generate_centers_code(
                 centers_behavior, duration, code_temperature, images
             )
-            if self._test_centers_code(centers_code):
+            if self._is_working_centers_code(centers_code):
                 break
 
         status.content = "(6/7) *Generating `compute_rgbs`...*"
@@ -269,7 +282,7 @@ class Generator:
             rgbs_code = generate_rgbs_code(
                 rgbs_behavior, duration, code_temperature, images
             )
-            if self._test_rgbs_code(rgbs_code):
+            if self._is_working_rgbs_code(rgbs_code):
                 break
 
         status.content = "(7/7) *Generating `compute_opacities`...*"
@@ -279,7 +292,7 @@ class Generator:
             opacities_code = generate_opacities_code(
                 opacities_behavior, duration, code_temperature, images
             )
-            if self._test_opacities_code(opacities_code):
+            if self._is_working_opacities_code(opacities_code):
                 break
 
         progress.remove()
@@ -305,54 +318,33 @@ class Generator:
         angle_images = renderer.render_angles(angles, angle_images_dir)
         return angle_images
 
-    def _score_samples(self) -> None:
-        status = self.gui_api.add_markdown("")
-        progress = self.gui_api.add_progress_bar(100, animated=True)
-
-        samples = self.output.auto_sampled_animations
-        for idx, animation in enumerate(samples):
-            status.content = f"*Scoring Sample {idx + 1}/{len(samples)}*"
-        progress.remove()
-        status.remove()
-
     def _score_animation(self, animation: Animation, image_dir: str) -> int:
-        status = self.gui_api.add_markdown("Scoring Animation")
-        progress = self.gui_api.add_progress_bar(100, animated=True)
         self.state.active_animation = animation
         time.sleep(1)
         self.state.visible_frame = 0
         time.sleep(1)
         renderer = Renderer(self.client, self.gui_api, self.state)
-        first_frames = renderer.render_first_frames(8, image_dir)
+        first_frames = renderer.render_first_frames(image_dir)
         score = generate_animation_score(first_frames, animation.description)
-        status.remove()
-        progress.remove()
         return score
 
-    def _get_best_sample(self) -> Animation:
-        score_to_animation = {
-            sample.score or 0: sample for sample in self.output.auto_sampled_animations
-        }
-        max_score = max(score_to_animation.keys())
-        return score_to_animation[max_score]
-
-    def _test_centers_code(self, centers_code: str) -> bool:
+    def _is_working_centers_code(self, centers_code: str) -> bool:
         try:
-            self.state.active_animation = Animation(centers_code=centers_code)
+            self.state.active_animation = Animation(duration=self.config.animation_duration, centers_code=centers_code)
         except Exception:
             return False
         return True
 
-    def _test_rgbs_code(self, rgbs_code: str) -> bool:
+    def _is_working_rgbs_code(self, rgbs_code: str) -> bool:
         try:
-            self.state.active_animation = Animation(rgbs_code=rgbs_code)
+            self.state.active_animation = Animation(duration=self.config.animation_duration, rgbs_code=rgbs_code)
         except Exception:
             return False
         return True
 
-    def _test_opacities_code(self, opacities_code: str) -> bool:
+    def _is_working_opacities_code(self, opacities_code: str) -> bool:
         try:
-            self.state.active_animation = Animation(opacities_code=opacities_code)
+            self.state.active_animation = Animation(duration=self.config.animation_duration, opacities_code=opacities_code)
         except Exception:
             return False
         return True

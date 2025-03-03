@@ -117,9 +117,6 @@ def compute_splat_at_t(
 ) -> SplatFile:
     tmp_splat = deepcopy(splat)
 
-    if np.isclose(t, 0.0):
-        return tmp_splat
-
     return {
         "centers": animation_functions.compute_centers(t, tmp_splat["centers"]),
         "rgbs": animation_functions.compute_rgbs(t, tmp_splat["rgbs"]),

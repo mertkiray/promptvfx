@@ -182,7 +182,7 @@ class State(Subject):
                 gs_handle.visible = frame == self.visible_frame
                 self.frame_to_handle[frame] = gs_handle
                 progress_bar.value = ((frame + 1) / self.fps) * 100
-        except:
+        except Exception:
             progress_bar.remove()
             loading_md.remove()
             raise
