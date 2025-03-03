@@ -1,6 +1,7 @@
 import time
 
 from animation import Animation, VisionAngle
+from examples import EXAMPLE_COLOR_SHIFT, EXAMPLE_EXPLOSION
 from generator import Generator, GeneratorConfig
 from renderer import Renderer
 from scene import Scene
@@ -48,6 +49,12 @@ class Gui(Observer):
                 disabled=True,
             )
             self.details_btn.on_click(lambda _: self._open_details())
+
+            self.examples_btn = self.api.add_button(
+                "Examples",
+                icon=viser.Icon.FOLDER_OPEN,
+            )
+            self.examples_btn.on_click(lambda _: self._open_examples())
 
             self.fps_btn_grp = self.api.add_button_group(
                 f"FPS ({self.state.fps})", ["8", "24", "50"]
@@ -250,6 +257,29 @@ class Gui(Observer):
             def _(_) -> None:
                 popout.close()
                 self._open_active_functions()
+
+            self._add_close_popout_btn(popout)
+
+    def _open_examples(self) -> None:
+        with self.api.add_modal("") as popout:
+
+            explosion_btn = self.api.add_button(
+                "💥 Example Explosion (1s)"
+            )
+
+            @explosion_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                self.state.active_animation = EXAMPLE_EXPLOSION
+
+            color_shift_btn = self.api.add_button(
+                "🌈 Example Color Shift (4s)"
+            )
+
+            @color_shift_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                self.state.active_animation = EXAMPLE_COLOR_SHIFT
 
             self._add_close_popout_btn(popout)
 
