@@ -21,7 +21,7 @@ From an abstract breakdown of an animation you will extract the behavior of the 
 
 **Goal**:
 - Decide for each phase of the breakdown, which points can even be realized by shifting the gaussian center positions only.
-- If parts of a phase cannot be implemented through just moving the center positions, then state that the centers should stay unchanged.
+- If a phase cannot be implemented through just moving the center positions, then state that the centers should stay the same as in the previous phase.
 - For the phases that can be implemented state clearly and simply how the center positions of all individual gaussians would behave.
 - Do not justify your analysis.
 
@@ -36,7 +36,7 @@ From an abstract breakdown of an animation you will extract the behavior of the 
 
 **Goal**:
 - Decide for each phase of the breakdown, which points can even be realized by only updating the colors of all individual gaussians.
-- If parts of a phase cannot be implemented through just changing the colors, then state that the colors should stay unchanged.
+- If a phase cannot be implemented through just changing the colors, then state that the colors should stay the same as in the previous phase.
 - For the phases that can be implemented state clearly and simply how the colors of all individual gaussians would behave.
 - Ignore Opacity/Transparency.
 - Do not justify your analysis.
@@ -52,7 +52,7 @@ From an abstract breakdown of an animation you will extract the behavior of the 
 
 **Goal**:
 - Decide for each phase of the breakdown, which points can even be realized by only updating the opacities of all individual gaussians.
-- If parts of a phase cannot be implemented through just changing the opacities, then state that the opacities should stay unchanged.
+- If a phase cannot be implemented through just changing the opacities, then state that the opacities should stay the same as in the previous phase.
 - For the phases that can be implemented state clearly and simply how the opacities of all individual gaussians would behave.
 - Do not justify your analysis.
 
