@@ -4,6 +4,8 @@ from animation import Animation, VisionAngle
 from examples import EXAMPLE_ACCELERATION, EXAMPLE_BREATHING, EXAMPLE_COLOR_SHIFT, EXAMPLE_EXPLOSION, EXAMPLE_LAVA_MELTING, EXAMPLE_LSD
 from generator import Generator, GeneratorConfig
 from renderer import Renderer
+from renderer_orbit import RendererOrbit
+from renderer_semisphere import RendererSemisphere
 from scene import Scene
 from src import viser
 from src.viser._gui_api import GuiApi
@@ -114,6 +116,12 @@ class Gui(Observer):
         with self.tab_group.add_tab("Render"):
             self.render_btn = self.api.add_button("Render", icon=viser.Icon.PHOTO)
             self.render_btn.on_click(lambda event: self._render(event))
+
+            self.render_semisphere_btn = self.api.add_button("Render AutoVFX Style", icon=viser.Icon.PHOTO)
+            self.render_semisphere_btn.on_click(lambda event: self._render_semisphere(event))
+
+            self.render_orbit_btn = self.api.add_button("Render Orbit", icon=viser.Icon.PHOTO)
+            self.render_orbit_btn.on_click(lambda event: self._render_orbit(event))
 
     def update(self, changed_attribute_name: str):
         match changed_attribute_name:
@@ -375,6 +383,20 @@ class Gui(Observer):
         client = event.client
         assert client is not None
         renderer = Renderer(client, self.api, self.state)
+        renderer.render_animation()
+
+
+    def _render_semisphere(self, event: viser.GuiEvent):
+        client = event.client
+        assert client is not None
+        renderer = RendererSemisphere(client, self.api, self.state)
+        renderer.render_animation()
+
+
+    def _render_orbit(self, event: viser.GuiEvent):
+        client = event.client
+        assert client is not None
+        renderer = RendererOrbit(client, self.api, self.state)
         renderer.render_animation()
 
     def _open_active_functions(self):
