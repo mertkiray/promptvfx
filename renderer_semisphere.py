@@ -27,21 +27,23 @@ def grid_half_sphere(radius=1.5, num_views=30, theta=None, phi_range=(0, 360)):
 
 
 class RendererSemisphere:
-    def __init__(self, client: ClientHandle, gui_api: GuiApi, state: State):
+    def __init__(self, client: ClientHandle, gui_api: GuiApi, state: State, server, camera_params_list):
         self.client = client
         self.gui_api = gui_api
         self.state = state
-        self.camera_radius = 2.5  # Camera radius
-        self.num_views = 185  # Number of discrete views
+        self.camera_radius = 3  # Camera radius
+        self.num_views = 360  # Number of discrete views
         self.theta_angle = 30  # Max elevation angle in degrees
         self.phi_range = (0, 360)  # Full 360-degree rotation
+        self.server=server
+        self.camera_params_list = camera_params_list
 
     def render_animation(self) -> None:
         status = self.gui_api.add_markdown("*Saving Frames...*")
         progress = self.gui_api.add_progress_bar(10, animated=True)
         fps = 24
         self.state.fps = fps
-        self.state.visible_frame = 6
+        self.state.visible_frame = 0
 
         # Compute total frames for animation
         total_frames = self.state.active_animation.duration * fps
@@ -70,14 +72,20 @@ class RendererSemisphere:
         # Render each discrete view, adjusting for animation frames
         for i, pose in enumerate(camera_poses):
             self._set_camera_pose(pose)
+            time.sleep(SLEEP*1)  # Allow time for rendering
 
             # Call `next_frame()` every `frames_per_next` views
             if i % frames_per_next == 0:
                 self.state.next_frame()
 
-            time.sleep(SLEEP)  # Allow time for rendering
+            time.sleep(SLEEP*1)  # Allow time for rendering
             rendered_images.append(self.client.get_render(height=1080, width=1920))
             progress.value += 100 / total_frames  # Update progress bar
+            time.sleep(SLEEP*2)
+
+            from main import render_and_add_images  # adjust import if necessary
+            render_and_add_images(self.server, self.camera_params_list)
+            time.sleep(SLEEP*2)
 
         # Write images to disk
         status.content = "*Writing JPGs...*"
