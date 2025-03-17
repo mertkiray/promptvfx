@@ -43,7 +43,7 @@ class Animation:
     centers_code: str = DEFAULT_CENTERS_CODE
     rgbs_code: str = DEFAULT_RGBS_CODE
     opacities_code: str = DEFAULT_OPACITIES_CODE
-    score: int | None = None
+    score: int = -1
 
 
 @dataclass

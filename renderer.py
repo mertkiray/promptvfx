@@ -126,7 +126,8 @@ class Renderer:
     def render_animation(self) -> None:
         status = self.gui_api.add_markdown("*Saving Frames...*")
         progress = self.gui_api.add_progress_bar(10, animated=True)
-        fps = self.state.fps
+        fps = 24
+        self.state.fps = fps
         rendered_images: list[np.ndarray] = []
         # Start at front angle
         self._set_camera_angle("front")
@@ -171,10 +172,12 @@ class Renderer:
             renders.append(render)
         return renders
 
-    def render_first_frames(self, n_frames: int, image_dir: str) -> list[str]:
-        "Returns base64 encoded renders of the first 8 animation frames."
+    def render_first_frames(self, image_dir: str) -> list[str]:
+        "Returns base64 encoded renders of the first n animation frames."
         first_frames = []
+        self.state.fps = 8
         self._set_camera_angle("front-left")
+        n_frames = self.state.active_animation.duration * 8
         for i in range(n_frames):
             self.state.visible_frame = i
             self.client.flush()

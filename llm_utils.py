@@ -251,7 +251,7 @@ def generate_feedback_improved_opacities_code(
     description: str,
     temperature: float,
 ) -> str:
-    system_message = prompts.CENTERS_FEEDBACK_SYSTEM_MESSAGE
+    system_message = prompts.OPACITIES_FEEDBACK_SYSTEM_MESSAGE
     prompt = prompts.FEEDBACK_USER_TEMPLATE
     prompt = prompt.format(
         description=description, function_code=opacities_code, feedback=feedback

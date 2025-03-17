@@ -1,7 +1,7 @@
 import time
 
 from animation import Animation, VisionAngle
-from examples import EXAMPLE_COLOR_SHIFT, EXAMPLE_EXPLOSION
+from examples import EXAMPLE_ACCELERATION, EXAMPLE_BREATHING, EXAMPLE_COLOR_SHIFT, EXAMPLE_EXPLOSION, EXAMPLE_LAVA_MELTING, EXAMPLE_LSD
 from generator import Generator, GeneratorConfig
 from renderer import Renderer
 from scene import Scene
@@ -37,11 +37,11 @@ class Gui(Observer):
             self.generator_btn = self.api.add_button(label="♻ New Animation")
             self.generator_btn.on_click(lambda _: self._open_generator())
 
-            self.feedback_btn = self.api.add_button(
+            self.improve_btn = self.api.add_button(
                 label="⇪ Improve Current",
                 disabled=True,
             )
-            self.feedback_btn.on_click(lambda _: self._open_feedback())
+            self.improve_btn.on_click(lambda _: self._open_improve_menu())
 
             self.details_btn = self.api.add_button(
                 "Details",
@@ -63,7 +63,7 @@ class Gui(Observer):
 
             self.speed_btn_grp = self.api.add_button_group(
                 label=f"Speed ({self.state.speed})",
-                options=["0.25x", "0.5x", "1x", "2x"],
+                options=[".25x", ".5x", "1x", "2x"],
             )
             self.speed_btn_grp.on_click(lambda _: self._sync_speed())
 
@@ -168,7 +168,6 @@ class Gui(Observer):
                     initial_value="none",
                 )
                 auto_sample_number = self.api.add_number("Auto Samples", 1, min=1)
-                auto_improve_number = self.api.add_number("Auto Improves", 0, min=0)
 
             generate_btn = self.api.add_button("🛠 Generate")
 
@@ -192,21 +191,40 @@ class Gui(Observer):
                         vision_angles_dropdown.value
                     ),
                     n_samples=auto_sample_number.value,
-                    n_improves=auto_improve_number.value,
                 )
                 generator = Generator(generator_config, client, self.api, self.state)
-                generator.run()
+                generator.auto_sample()
 
                 self.generator = generator
                 self.state.animation_evolution = generator.output
                 self.state.active_animation = generator.output.final_animation
-                self.feedback_btn.disabled = True
+                self.improve_btn.disabled = True
                 self.details_btn.disabled = False
 
             self._add_close_popout_btn(popout)
 
+    def _open_improve_menu(self) -> None:
+        with self.api.add_modal("") as popout:
+            auto_improve_btn = self.api.add_button("Auto Improve", icon=viser.Icon.BRAIN)
+
+            @auto_improve_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                assert self.generator is not None
+                self.generator.auto_improve()
+                self.state.active_animation = self.generator.output.final_animation
+
+            feedback_btn = self.api.add_button("Feedback Improve", icon=viser.Icon.WRITING)
+
+            @feedback_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                self._open_feedback()
+
+            self._add_close_popout_btn(popout)
+
     def _open_feedback(self):
-        with self.api.add_modal("⇪ Improve Current") as popout:
+        with self.api.add_modal("") as popout:
             input_txt = self.api.add_text("Feedback", "")
             improve_btn = self.api.add_button("⮞ Submit")
 
@@ -218,7 +236,7 @@ class Gui(Observer):
                     return
                 assert self.generator is not None
                 popout.close()
-                self.generator.apply_feedback(input_txt.value)
+                self.generator.feedback_improve(input_txt.value)
                 self.state.active_animation = self.generator.output.final_animation
 
             self._add_close_popout_btn(popout)
@@ -233,7 +251,7 @@ class Gui(Observer):
                 for idx, animation in enumerate(
                     self.state.animation_evolution.auto_sampled_animations
                 ):
-                    self.api.add_button(f"Auto-Sample {idx+1}").on_click(
+                    self.api.add_button(f"Sample {idx+1}").on_click(
                         lambda _, anim=animation: change_and_close(anim, popout)
                     )
                 for idx, animation in enumerate(
@@ -272,6 +290,33 @@ class Gui(Observer):
                 popout.close()
                 self.state.active_animation = EXAMPLE_EXPLOSION
 
+            lsd_btn = self.api.add_button(
+                "💮 Example LSD (1s)"
+            )
+
+            @lsd_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                self.state.active_animation = EXAMPLE_LSD
+
+            acceleration_btn = self.api.add_button(
+                "🚕 Example Acceleration (2s)"
+            )
+
+            @acceleration_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                self.state.active_animation = EXAMPLE_ACCELERATION
+
+            breathing_btn = self.api.add_button(
+                "🌬️ Example Breathing (3s)"
+            )
+
+            @breathing_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                self.state.active_animation = EXAMPLE_BREATHING
+
             color_shift_btn = self.api.add_button(
                 "🌈 Example Color Shift (4s)"
             )
@@ -280,6 +325,15 @@ class Gui(Observer):
             def _(_) -> None:
                 popout.close()
                 self.state.active_animation = EXAMPLE_COLOR_SHIFT
+
+            lava_melting_btn = self.api.add_button(
+                "🌋 Example Lava Melting (5s)"
+            )
+
+            @lava_melting_btn.on_click
+            def _(_) -> None:
+                popout.close()
+                self.state.active_animation = EXAMPLE_LAVA_MELTING
 
             self._add_close_popout_btn(popout)
 
