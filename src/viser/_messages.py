@@ -1283,6 +1283,14 @@ class GaussianSplatsProps:
 
 
 @dataclasses.dataclass
+class SetGaussianSplatsBufferMessage(Message):
+    """Update the buffer for an existing Gaussian splat node."""
+
+    name: str
+    buffer: npt.NDArray[np.uint32]
+
+
+@dataclasses.dataclass
 class GetRenderRequestMessage(Message):
     """Message from server->client requesting a render from a specified camera
     pose."""

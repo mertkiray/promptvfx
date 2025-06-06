@@ -275,6 +275,12 @@ export const SplatObject = React.forwardRef<
     };
   }, [obj]);
 
+  React.useEffect(() => {
+    if (obj === null) return;
+    setBuffer(name, buffer);
+    return () => removeBuffer(name);
+  }, [buffer, obj]);
+
   return <group ref={setRef}></group>;
 });
 
@@ -291,8 +297,11 @@ function SplatRenderer() {
     merged.numGroups,
   );
 
-  // Create sorting worker.
-  const sortWorker = new SplatSortWorker();
+  const sortWorkerRef = React.useRef<SplatSortWorker | null>(null);
+  if (sortWorkerRef.current === null) {
+    sortWorkerRef.current = new SplatSortWorker();
+  }
+  const sortWorker = sortWorkerRef.current;
   let initializedBufferTexture = false;
   sortWorker.onmessage = (e) => {
     // Update rendering order.
@@ -311,10 +320,12 @@ function SplatRenderer() {
     sortWorker.postMessage(message);
   }
 
-  postToWorker({
-    setBuffer: merged.gaussianBuffer,
-    setGroupIndices: merged.groupIndices,
-  });
+  React.useEffect(() => {
+    postToWorker({
+      setBuffer: merged.gaussianBuffer,
+      setGroupIndices: merged.groupIndices,
+    });
+  }, [merged.gaussianBuffer, merged.groupIndices]);
 
   // Cleanup.
   React.useEffect(() => {
@@ -323,8 +334,9 @@ function SplatRenderer() {
       meshProps.geometry.dispose();
       meshProps.material.dispose();
       postToWorker({ close: true });
+      sortWorkerRef.current?.terminate();
     };
-  });
+  }, []);
 
   // Per-frame updates. This is in charge of synchronizing transforms and
   // triggering sorting.
@@ -332,11 +344,19 @@ function SplatRenderer() {
   // We pre-allocate matrices to make life easier for the garbage collector.
   const meshRef = React.useRef<THREE.Mesh>(null);
   const tmpT_camera_group = new THREE.Matrix4();
-  const Tz_camera_groups = new Float32Array(merged.numGroups * 4);
-  const prevRowMajorT_camera_groups = meshProps.rowMajorT_camera_groups
-    .slice()
-    .fill(0);
+  const Tz_camera_groupsRef = React.useRef(new Float32Array(merged.numGroups * 4));
+  const prevRowMajorRef = React.useRef(
+    meshProps.rowMajorT_camera_groups.slice().fill(0),
+  );
   const prevVisibles: boolean[] = [];
+  React.useEffect(() => {
+    if (Tz_camera_groupsRef.current.length !== merged.numGroups * 4) {
+      Tz_camera_groupsRef.current = new Float32Array(merged.numGroups * 4);
+    }
+    if (prevRowMajorRef.current.length !== merged.numGroups * 12) {
+      prevRowMajorRef.current = new Float32Array(merged.numGroups * 12);
+    }
+  }, [merged.numGroups]);
   useFrame((state, delta) => {
     const mesh = meshRef.current;
     if (mesh === null || sortWorker === null) return;
@@ -370,7 +390,7 @@ function SplatRenderer() {
       if (node === undefined) continue;
       tmpT_camera_group.copy(T_camera_world).multiply(node.matrixWorld);
       const colMajorElements = tmpT_camera_group.elements;
-      Tz_camera_groups.set(
+      Tz_camera_groupsRef.current.set(
         [
           colMajorElements[2],
           colMajorElements[6],
@@ -403,13 +423,13 @@ function SplatRenderer() {
     }
 
     const groupsMovedWrtCam = !meshProps.rowMajorT_camera_groups.every(
-      (v, i) => v === prevRowMajorT_camera_groups[i],
+      (v, i) => v === prevRowMajorRef.current[i],
     );
 
     if (groupsMovedWrtCam) {
       // Gaussians need to be re-sorted.
       postToWorker({
-        setTz_camera_groups: Tz_camera_groups,
+        setTz_camera_groups: Tz_camera_groupsRef.current,
       });
     }
     if (groupsMovedWrtCam || visibilitiesChanged) {
@@ -424,7 +444,7 @@ function SplatRenderer() {
           meshProps.rowMajorT_camera_groups[i * 12 + 11] = 1e10;
         }
       }
-      prevRowMajorT_camera_groups.set(meshProps.rowMajorT_camera_groups);
+      prevRowMajorRef.current.set(meshProps.rowMajorT_camera_groups);
       meshProps.textureT_camera_groups.needsUpdate = true;
     }
   }, -100 /* This should be called early to reduce group transform artifacts. */);
@@ -482,72 +502,110 @@ function mergeGaussianGroups(groupBufferFromName: {
 
 /**Hook to generate properties for rendering Gaussians via a three.js mesh.*/
 function useGaussianMeshProps(gaussianBuffer: Uint32Array, numGroups: number) {
+  const gl = useThree((state) => state.gl);
+  const maxTextureSize = gl.capabilities.maxTextureSize;
+  const propsRef = React.useRef<{
+    geometry: THREE.InstancedBufferGeometry;
+    material: THREE.ShaderMaterial;
+    textureBuffer: THREE.DataTexture;
+    sortedIndexAttribute: THREE.InstancedBufferAttribute;
+    textureT_camera_groups: THREE.DataTexture;
+    rowMajorT_camera_groups: Float32Array;
+    numGroups: number;
+  }>();
+
   const numGaussians = gaussianBuffer.length / 8;
-  const maxTextureSize = useThree((state) => state.gl).capabilities
-    .maxTextureSize;
 
-  // Create instanced geometry.
-  const geometry = new THREE.InstancedBufferGeometry();
-  geometry.instanceCount = numGaussians;
-  geometry.setIndex(
-    new THREE.BufferAttribute(new Uint32Array([0, 2, 1, 0, 3, 2]), 1),
-  );
-  geometry.setAttribute(
-    "position",
-    new THREE.BufferAttribute(
-      new Float32Array([-2, -2, 2, -2, 2, 2, -2, 2]),
-      2,
-    ),
-  );
+  if (!propsRef.current) {
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setIndex(
+      new THREE.BufferAttribute(new Uint32Array([0, 2, 1, 0, 3, 2]), 1),
+    );
+    geometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(
+        new Float32Array([-2, -2, 2, -2, 2, 2, -2, 2]),
+        2,
+      ),
+    );
 
-  // Rendering order for Gaussians.
-  const sortedIndexAttribute = new THREE.InstancedBufferAttribute(
-    new Uint32Array(numGaussians),
-    1,
-  );
-  sortedIndexAttribute.setUsage(THREE.DynamicDrawUsage);
-  geometry.setAttribute("sortedIndex", sortedIndexAttribute);
+    const sortedIndexAttribute = new THREE.InstancedBufferAttribute(
+      new Uint32Array(numGaussians),
+      1,
+    );
+    sortedIndexAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute("sortedIndex", sortedIndexAttribute);
 
-  // Create texture buffers.
+    const textureWidth = Math.min(numGaussians * 2, maxTextureSize);
+    const textureHeight = Math.ceil((numGaussians * 2) / textureWidth);
+    const bufferPadded = new Uint32Array(textureWidth * textureHeight * 4);
+    const textureBuffer = new THREE.DataTexture(
+      bufferPadded,
+      textureWidth,
+      textureHeight,
+      THREE.RGBAIntegerFormat,
+      THREE.UnsignedIntType,
+    );
+    textureBuffer.internalFormat = "RGBA32UI";
+
+    const rowMajorT_camera_groups = new Float32Array(numGroups * 12);
+    const textureT_camera_groups = new THREE.DataTexture(
+      rowMajorT_camera_groups,
+      (numGroups * 12) / 4,
+      1,
+      THREE.RGBAFormat,
+      THREE.FloatType,
+    );
+    textureT_camera_groups.internalFormat = "RGBA32F";
+
+    const material = new GaussianSplatMaterial({
+      // @ts-ignore
+      textureBuffer: textureBuffer,
+      textureT_camera_groups: textureT_camera_groups,
+      numGaussians: 0,
+      transitionInState: 0.0,
+    });
+
+    propsRef.current = {
+      geometry,
+      material,
+      textureBuffer,
+      sortedIndexAttribute,
+      textureT_camera_groups,
+      rowMajorT_camera_groups,
+      numGroups,
+    };
+  }
+
+  const props = propsRef.current!;
+
+  // Reallocate if group count changes.
+  if (props.numGroups !== numGroups) {
+    props.rowMajorT_camera_groups = new Float32Array(numGroups * 12);
+    props.textureT_camera_groups.image.data = props.rowMajorT_camera_groups;
+    props.textureT_camera_groups.image.width = (numGroups * 12) / 4;
+    props.textureT_camera_groups.needsUpdate = true;
+    props.numGroups = numGroups;
+  }
+
+  // Resize buffer textures if needed.
   const textureWidth = Math.min(numGaussians * 2, maxTextureSize);
   const textureHeight = Math.ceil((numGaussians * 2) / textureWidth);
-  const bufferPadded = new Uint32Array(textureWidth * textureHeight * 4);
-  bufferPadded.set(gaussianBuffer);
-  const textureBuffer = new THREE.DataTexture(
-    bufferPadded,
-    textureWidth,
-    textureHeight,
-    THREE.RGBAIntegerFormat,
-    THREE.UnsignedIntType,
-  );
-  textureBuffer.internalFormat = "RGBA32UI";
-  textureBuffer.needsUpdate = true;
+  const neededLength = textureWidth * textureHeight * 4;
+  if (props.textureBuffer.image.data.length !== neededLength) {
+    props.textureBuffer.image.data = new Uint32Array(neededLength);
+    props.textureBuffer.image.width = textureWidth;
+    props.textureBuffer.image.height = textureHeight;
+    props.textureBuffer.needsUpdate = true;
+    props.sortedIndexAttribute.array = new Uint32Array(numGaussians);
+    props.sortedIndexAttribute.count = numGaussians;
+    props.sortedIndexAttribute.needsUpdate = true;
+    props.geometry.setAttribute("sortedIndex", props.sortedIndexAttribute);
+  }
 
-  const rowMajorT_camera_groups = new Float32Array(numGroups * 12);
-  const textureT_camera_groups = new THREE.DataTexture(
-    rowMajorT_camera_groups,
-    (numGroups * 12) / 4,
-    1,
-    THREE.RGBAFormat,
-    THREE.FloatType,
-  );
-  textureT_camera_groups.internalFormat = "RGBA32F";
-  textureT_camera_groups.needsUpdate = true;
+  props.textureBuffer.image.data.set(gaussianBuffer);
+  props.textureBuffer.needsUpdate = true;
+  props.geometry.instanceCount = numGaussians;
 
-  const material = new GaussianSplatMaterial({
-    // @ts-ignore
-    textureBuffer: textureBuffer,
-    textureT_camera_groups: textureT_camera_groups,
-    numGaussians: 0,
-    transitionInState: 0.0,
-  });
-
-  return {
-    geometry,
-    material,
-    textureBuffer,
-    sortedIndexAttribute,
-    textureT_camera_groups,
-    rowMajorT_camera_groups,
-  };
+  return props;
 }

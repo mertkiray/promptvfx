@@ -433,6 +433,39 @@ class GaussianSplatHandle(
     **Work-in-progress.** Gaussian rendering is still under development.
     """
 
+    def update_buffer(
+        self,
+        centers: np.ndarray,
+        covariances: np.ndarray,
+        rgbs: np.ndarray,
+        opacities: np.ndarray,
+    ) -> None:
+        """Replace the underlying Gaussian buffer in real time."""
+
+        num_gaussians = centers.shape[0]
+        assert centers.shape == (num_gaussians, 3)
+        assert covariances.shape == (num_gaussians, 3, 3)
+        assert rgbs.shape == (num_gaussians, 3)
+        assert opacities.shape == (num_gaussians, 1)
+
+        cov_triu = covariances.reshape((-1, 9))[:, np.array([0, 1, 2, 4, 5, 8])]
+        buffer = np.concatenate(
+            [
+                centers.astype(np.float32).view(np.uint8),
+                np.zeros((num_gaussians, 4), dtype=np.uint8),
+                cov_triu.astype(np.float16).copy().view(np.uint8),
+                colors_to_uint8(rgbs),
+                colors_to_uint8(opacities),
+            ],
+            axis=-1,
+        ).view(np.uint32)
+        assert buffer.shape == (num_gaussians, 8)
+
+        self._impl.props.buffer = buffer
+        self._impl.api._websock_interface.queue_message(
+            _messages.SetGaussianSplatsBufferMessage(self._impl.name, buffer)
+        )
+
 
 class MeshSkinnedHandle(
     _ClickableSceneNodeHandle,

@@ -1046,6 +1046,15 @@ export interface GaussianSplatsMessage {
   name: string;
   props: { buffer: Uint8Array };
 }
+/** Update the buffer for an existing Gaussian splat node.
+ *
+ * (automatically generated)
+ */
+export interface SetGaussianSplatsBufferMessage {
+  type: "SetGaussianSplatsBufferMessage";
+  name: string;
+  buffer: Uint8Array;
+}
 /** Message from server->client requesting a render from a specified camera
  * pose.
  *
@@ -1206,6 +1215,7 @@ export type Message =
   | CatmullRomSplineMessage
   | CubicBezierSplineMessage
   | GaussianSplatsMessage
+  | SetGaussianSplatsBufferMessage
   | GetRenderRequestMessage
   | GetRenderResponseMessage
   | FileTransferStart

@@ -310,6 +310,17 @@ function useMessageHandler() {
           attr[message.name]!.poseUpdateState = "needsUpdate";
         break;
       }
+      case "SetGaussianSplatsBufferMessage": {
+        updateSceneNode(message.name, {
+          buffer: new Uint8Array(
+            message.buffer.buffer.slice(
+              message.buffer.byteOffset,
+              message.buffer.byteOffset + message.buffer.byteLength,
+            ),
+          ),
+        });
+        return;
+      }
       case "SetSceneNodeVisibilityMessage": {
         const attr = viewer.nodeAttributesFromName.current;
         if (attr[message.name] === undefined) attr[message.name] = {};
