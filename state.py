@@ -12,7 +12,7 @@ from animation import (
 )
 from scene import Scene
 from splat_utils import SplatFile, compute_splat_at_t, load_splat
-from src.viser._scene_handles import GaussianSplatHandle
+from viser._scene_handles import GaussianSplatHandle
 from viser import GuiApi
 
 

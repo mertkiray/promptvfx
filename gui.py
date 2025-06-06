@@ -5,9 +5,8 @@ from examples import EXAMPLE_ACCELERATION, EXAMPLE_BREATHING, EXAMPLE_COLOR_SHIF
 from generator import Generator, GeneratorConfig
 from renderer import Renderer
 from scene import Scene
-from src import viser
-from src.viser._gui_api import GuiApi
-from src.viser._viser import ViserServer
+from viser._gui_api import GuiApi
+from viser._viser import ViserServer
 from state import Observer, State
 from text_utils import (
     build_function_inspector_markdown,

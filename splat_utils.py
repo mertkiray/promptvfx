@@ -10,7 +10,7 @@ import numpy as np
 import numpy.typing as npt
 from plyfile import PlyData
 
-from src.viser import transforms as tf
+from viser import transforms as tf
 
 
 class SplatFile(TypedDict):

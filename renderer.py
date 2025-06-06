@@ -5,7 +5,7 @@ import time
 import imageio
 import numpy as np
 
-import src.viser.transforms as tf
+import viser.transforms as tf
 from animation import VisionAngle
 from state import State
 from text_utils import snake_case
