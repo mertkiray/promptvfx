@@ -12,6 +12,7 @@ from text_utils import (
     build_function_inspector_markdown,
 )
 from viser._gui_handles import GuiModalHandle
+import viser
 
 
 class Gui(Observer):

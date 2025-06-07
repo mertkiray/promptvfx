@@ -9,7 +9,7 @@ import tyro
 from animation import write_animation_functions
 from gui import Gui
 from scene import Scene
-from src import viser
+import viser
 from state import State
 
 
