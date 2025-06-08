@@ -73,15 +73,18 @@ export const SplatObject = React.forwardRef<
   const nodeRefFromId = splatContext.useGaussianSplatStore(
     (state) => state.nodeRefFromId,
   );
-  const name = React.useMemo(() => uuidv4(), [buffer]);
+  const name = React.useMemo(() => uuidv4(), []);
 
   React.useEffect(() => {
     setBuffer(name, buffer);
+  }, [name, buffer]);
+
+  React.useEffect(() => {
     return () => {
       removeBuffer(name);
       delete nodeRefFromId.current[name];
     };
-  }, [buffer]);
+  }, [name]);
 
   return (
     <group
@@ -127,45 +130,71 @@ function SplatRendererImpl() {
 
   // Consolidate Gaussian groups into a single buffer.
   const merged = mergeGaussianGroups(groupBufferFromId);
+
+  // Initialize rendering resources. The helper hook internally caches
+  // geometry and textures, so calling it every render is safe and will only
+  // update data in-place.
   const meshProps = useGaussianMeshProps(
     merged.gaussianBuffer,
     merged.numGroups,
   );
   splatContext.meshPropsRef.current = meshProps;
 
-  // Create sorting worker.
-  const sortWorker = new SplatSortWorker();
-  let initializedBufferTexture = false;
-  sortWorker.onmessage = (e) => {
-    // Update rendering order.
-    const sortedIndices = e.data.sortedIndices as Uint32Array;
-    meshProps.sortedIndexAttribute.set(sortedIndices);
-    meshProps.sortedIndexAttribute.needsUpdate = true;
-
-    // Trigger initial render.
-    if (!initializedBufferTexture) {
-      meshProps.material.uniforms.numGaussians.value = merged.numGaussians;
-      meshProps.textureBuffer.needsUpdate = true;
-      initializedBufferTexture = true;
+  // Create sorting worker whenever the buffer layout changes. Reusing the
+  // worker after posting new buffers occasionally resulted in WebAssembly
+  // runtime errors, so we tear it down and recreate it with the updated data.
+  const sortWorkerRef = React.useRef<Worker | null>(null);
+  const initializedRef = React.useRef(false);
+  React.useEffect(() => {
+    // Dispose old worker if present.
+    if (sortWorkerRef.current !== null) {
+      sortWorkerRef.current.postMessage({ close: true });
     }
-  };
-  function postToWorker(message: SorterWorkerIncoming) {
-    sortWorker.postMessage(message);
-  }
-  postToWorker({
-    setBuffer: merged.gaussianBuffer,
-    setGroupIndices: merged.groupIndices,
-  });
 
-  // Cleanup.
+    const worker = new SplatSortWorker();
+    sortWorkerRef.current = worker;
+    worker.onmessage = (e) => {
+      // Update rendering order.
+      const sortedIndices = e.data.sortedIndices as Uint32Array;
+      meshProps.sortedIndexAttribute.set(sortedIndices);
+      meshProps.sortedIndexAttribute.needsUpdate = true;
+
+      // Trigger initial render.
+      if (!initializedRef.current) {
+        meshProps.material.uniforms.numGaussians.value = merged.numGaussians;
+        meshProps.textureBuffer.needsUpdate = true;
+        initializedRef.current = true;
+      }
+    };
+    // Send initial buffer to worker and texture.
+    worker.postMessage({
+      setBuffer: merged.gaussianBuffer,
+      setGroupIndices: merged.groupIndices,
+    });
+    meshProps.textureBuffer.image.data.set(merged.gaussianBuffer);
+    meshProps.textureBuffer.needsUpdate = true;
+
+    return () => {
+      worker.postMessage({ close: true });
+    };
+  }, [merged.gaussianBuffer, merged.groupIndices, meshProps]);
+
+  const postToWorker = React.useCallback(
+    (message: SorterWorkerIncoming) => {
+      if (sortWorkerRef.current === null) return;
+      sortWorkerRef.current.postMessage(message);
+    },
+    [],
+  );
+
+  // Cleanup rendering resources on unmount.
   React.useEffect(() => {
     return () => {
       meshProps.textureBuffer.dispose();
       meshProps.geometry.dispose();
       meshProps.material.dispose();
-      postToWorker({ close: true });
     };
-  });
+  }, [meshProps]);
 
   // Per-frame updates. This is in charge of synchronizing transforms and
   // triggering sorting.
@@ -300,7 +329,7 @@ function SplatRendererImpl() {
     const mesh = meshRef.current;
     if (
       mesh === null ||
-      sortWorker === null ||
+      sortWorkerRef.current === null ||
       meshProps.rowMajorT_camera_groups.length === 0
     )
       return;

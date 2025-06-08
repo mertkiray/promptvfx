@@ -12,6 +12,9 @@ from animation import (
 )
 from scene import Scene
 from splat_utils import SplatFile, compute_splat_at_t, load_splat
+from splat_utils import splatfile_to_buffer
+import numpy as np
+import numpy.typing as npt
 from viser._scene_handles import GaussianSplatHandle
 from viser import GuiApi
 
@@ -48,9 +51,11 @@ class State(Subject):
         self._background_visible: bool = True
         self._active_animation: Animation = Animation()
         self.animation_evolution = AnimationEvolution()
-        self.frame_to_handle: dict[int, GaussianSplatHandle] = {}
+        self.animation_handle: GaussianSplatHandle | None = None
+        self.frame_buffers: list[npt.NDArray[np.uint32]] = []
         self.background_handle: GaussianSplatHandle | None = None
         self.playing: bool = False
+        self.background_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
         write_animation_functions(self.active_animation)
         self.load_vase()
@@ -81,9 +86,9 @@ class State(Subject):
     @visible_frame.setter
     def visible_frame(self, value: int) -> None:
         wrapped_value = value % self.total_frames
-        self.frame_to_handle[self.visible_frame].visible = False
-        self.frame_to_handle[wrapped_value].visible = True
         self._visible_frame = wrapped_value
+        if self.animation_handle and self.frame_buffers:
+            self.animation_handle.buffer = self.frame_buffers[wrapped_value]
 
     @property
     def fps(self) -> int:
@@ -119,10 +124,10 @@ class State(Subject):
             self.background_handle.visible = value
 
     def remove_gs_handles(self) -> None:
-        for gs_handle in self.frame_to_handle.values():
-            if gs_handle:
-                gs_handle.remove()
-        self.frame_to_handle.clear()
+        if self.animation_handle:
+            self.animation_handle.remove()
+            self.animation_handle = None
+        self.frame_buffers.clear()
 
     def next_frame(self):
         max_frame = self.total_frames - 1
@@ -175,13 +180,27 @@ class State(Subject):
         animation_functions = import_animation_functions()
         seconds_per_frame = 1.0 / self.fps
         try:
+            self.frame_buffers = []
+            first_splat = None
+            first_buffer = None
             for frame in range(self.total_frames):
                 t = frame * seconds_per_frame
                 splat_at_t = compute_splat_at_t(t, splat, animation_functions)
-                gs_handle = self.scene.add_splat(f"splat_at_{t}", splat_at_t)
-                gs_handle.visible = frame == self.visible_frame
-                self.frame_to_handle[frame] = gs_handle
-                progress_bar.value = ((frame + 1) / self.fps) * 100
+                buffer = splatfile_to_buffer(splat_at_t)
+                self.frame_buffers.append(buffer)
+                if first_splat is None:
+                    first_splat = splat_at_t
+                    first_buffer = buffer
+                progress_bar.value = ((frame + 1) / self.total_frames) * 100
+
+            assert first_splat is not None and first_buffer is not None
+            self.animation_handle = self.scene.add_splat(
+                "animated_splat",
+                first_splat,
+                self.background_position,
+                (1.0, 0.0, 0.0, 0.0),
+            )
+            self.animation_handle.buffer = first_buffer
         except Exception:
             progress_bar.remove()
             loading_md.remove()
@@ -204,6 +223,7 @@ class State(Subject):
             "splat_background", bg_data, bg_position
         )
         self.background_handle.visible = self.background_visible
+        self.background_position = bg_position
         progress.remove()
         status.remove()
 

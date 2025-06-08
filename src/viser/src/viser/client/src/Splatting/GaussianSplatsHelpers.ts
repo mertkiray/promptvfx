@@ -171,72 +171,95 @@ export function useGaussianMeshProps(
   gaussianBuffer: Uint32Array,
   numGroups: number,
 ) {
-  const numGaussians = gaussianBuffer.length / 8;
   const maxTextureSize = useThree((state) => state.gl).capabilities
     .maxTextureSize;
+  const resourcesRef = React.useRef<{
+    geometry: THREE.InstancedBufferGeometry;
+    material: THREE.ShaderMaterial;
+    textureBuffer: THREE.DataTexture;
+    sortedIndexAttribute: THREE.InstancedBufferAttribute;
+    textureT_camera_groups: THREE.DataTexture;
+    rowMajorT_camera_groups: Float32Array;
+  } | null>(null);
 
-  // Create instanced geometry.
-  const geometry = new THREE.InstancedBufferGeometry();
-  geometry.instanceCount = numGaussians;
-  geometry.setIndex(
-    new THREE.BufferAttribute(new Uint32Array([0, 2, 1, 0, 3, 2]), 1),
-  );
-  geometry.setAttribute(
-    "position",
-    new THREE.BufferAttribute(
-      new Float32Array([-2, -2, 2, -2, 2, 2, -2, 2]),
-      2,
-    ),
-  );
+  const numGaussians = gaussianBuffer.length / 8;
 
-  // Rendering order for Gaussians.
-  const sortedIndexAttribute = new THREE.InstancedBufferAttribute(
-    new Uint32Array(numGaussians),
-    1,
-  );
-  sortedIndexAttribute.setUsage(THREE.DynamicDrawUsage);
-  geometry.setAttribute("sortedIndex", sortedIndexAttribute);
+  if (resourcesRef.current === null) {
+    // Create instanced geometry.
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.instanceCount = numGaussians;
+    geometry.setIndex(
+      new THREE.BufferAttribute(new Uint32Array([0, 2, 1, 0, 3, 2]), 1),
+    );
+    geometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(
+        new Float32Array([
+          -2, -2, 0,
+          2, -2, 0,
+          2, 2, 0,
+          -2, 2, 0,
+        ]),
+        3,
+      ),
+    );
+    geometry.computeBoundingSphere();
 
-  // Create texture buffers.
-  const textureWidth = Math.min(numGaussians * 2, maxTextureSize);
-  const textureHeight = Math.ceil((numGaussians * 2) / textureWidth);
-  const bufferPadded = new Uint32Array(textureWidth * textureHeight * 4);
-  bufferPadded.set(gaussianBuffer);
-  const textureBuffer = new THREE.DataTexture(
-    bufferPadded,
-    textureWidth,
-    textureHeight,
-    THREE.RGBAIntegerFormat,
-    THREE.UnsignedIntType,
-  );
-  textureBuffer.internalFormat = "RGBA32UI";
-  textureBuffer.needsUpdate = true;
+    // Rendering order for Gaussians.
+    const sortedIndexAttribute = new THREE.InstancedBufferAttribute(
+      new Uint32Array(numGaussians),
+      1,
+    );
+    sortedIndexAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute("sortedIndex", sortedIndexAttribute);
 
-  const rowMajorT_camera_groups = new Float32Array(numGroups * 12);
-  const textureT_camera_groups = new THREE.DataTexture(
-    rowMajorT_camera_groups,
-    (numGroups * 12) / 4,
-    1,
-    THREE.RGBAFormat,
-    THREE.FloatType,
-  );
-  textureT_camera_groups.internalFormat = "RGBA32F";
-  textureT_camera_groups.needsUpdate = true;
+    const textureWidth = Math.min(numGaussians * 2, maxTextureSize);
+    const textureHeight = Math.ceil((numGaussians * 2) / textureWidth);
+    const bufferPadded = new Uint32Array(textureWidth * textureHeight * 4);
+    bufferPadded.set(gaussianBuffer);
+    const textureBuffer = new THREE.DataTexture(
+      bufferPadded,
+      textureWidth,
+      textureHeight,
+      THREE.RGBAIntegerFormat,
+      THREE.UnsignedIntType,
+    );
+    textureBuffer.internalFormat = "RGBA32UI";
+    textureBuffer.needsUpdate = true;
 
-  const material = new GaussianSplatMaterial();
-  material.textureBuffer = textureBuffer;
-  material.textureT_camera_groups = textureT_camera_groups;
-  material.numGaussians = numGaussians;
-  material.focal = [640, 480];
+    const rowMajorT_camera_groups = new Float32Array(numGroups * 12);
+    const textureT_camera_groups = new THREE.DataTexture(
+      rowMajorT_camera_groups,
+      (numGroups * 12) / 4,
+      1,
+      THREE.RGBAFormat,
+      THREE.FloatType,
+    );
+    textureT_camera_groups.internalFormat = "RGBA32F";
+    textureT_camera_groups.needsUpdate = true;
 
-  return {
-    geometry,
-    material,
-    textureBuffer,
-    sortedIndexAttribute,
-    textureT_camera_groups,
-    rowMajorT_camera_groups,
-  };
+    const material = new GaussianSplatMaterial();
+    material.textureBuffer = textureBuffer;
+    material.textureT_camera_groups = textureT_camera_groups;
+    material.numGaussians = numGaussians;
+    material.focal = [640, 480];
+
+    resourcesRef.current = {
+      geometry,
+      material,
+      textureBuffer,
+      sortedIndexAttribute,
+      textureT_camera_groups,
+      rowMajorT_camera_groups,
+    };
+  } else {
+    const resources = resourcesRef.current;
+    resources.textureBuffer.image.data.set(gaussianBuffer);
+    resources.textureBuffer.needsUpdate = true;
+    resources.material.uniforms.numGaussians.value = numGaussians;
+  }
+
+  return resourcesRef.current!;
 }
 /**Global splat state.*/
 interface SplatState {

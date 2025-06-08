@@ -11,6 +11,7 @@ import numpy.typing as npt
 from plyfile import PlyData
 
 from viser import transforms as tf
+from viser._assignable_props_api import colors_to_uint8
 
 
 class SplatFile(TypedDict):
@@ -123,3 +124,31 @@ def compute_splat_at_t(
         "opacities": animation_functions.compute_opacities(t, tmp_splat["opacities"]),
         "covariances": tmp_splat["covariances"],
     }
+
+
+def splatfile_to_buffer(splat: SplatFile) -> npt.NDArray[np.uint32]:
+    """Convert a ``SplatFile`` into a uint32 buffer for GaussianSplats."""
+
+    centers = splat["centers"]
+    rgbs = splat["rgbs"]
+    opacities = splat["opacities"]
+    covariances = splat["covariances"]
+
+    num_gaussians = centers.shape[0]
+    cov_triu = covariances.reshape((-1, 9))[:, np.array([0, 1, 2, 4, 5, 8])]
+
+    buffer = (
+        np.concatenate(
+            [
+                centers.astype(np.float32).view(np.uint8),
+                np.zeros((num_gaussians, 4), dtype=np.uint8),
+                cov_triu.astype(np.float16).copy().view(np.uint8),
+                colors_to_uint8(rgbs),
+                colors_to_uint8(opacities),
+            ],
+            axis=-1,
+        ).view(np.uint32)
+    )
+
+    assert buffer.shape == (num_gaussians, 8)
+    return buffer

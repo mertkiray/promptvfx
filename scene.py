@@ -22,6 +22,7 @@ class Scene:
         name: str,
         splat: SplatFile,
         position: tuple[float, float, float] = (0, 0, 0),
+        wxyz: tuple[float, float, float, float] = (1, 0, 0, 0),
     ) -> GaussianSplatHandle:
         return self.api.add_gaussian_splats(
             name=name + "_" + str(uuid.uuid4()),
@@ -30,6 +31,7 @@ class Scene:
             opacities=splat["opacities"],
             covariances=splat["covariances"],
             position=position,
+            wxyz=wxyz,
         )
 
     def _add_black_box(self) -> None:
