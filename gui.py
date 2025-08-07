@@ -104,12 +104,31 @@ class Gui(Observer):
                 self.state.background_visible = self.background_cbox.value
 
             with self.api.add_folder("Example Scenes"):
-                self.api.add_button("Bear").on_click(lambda _: self.state.load_bear())
-                self.api.add_button("Bulldozer").on_click(
-                    lambda _: self.state.load_bulldozer()
-                )
-                self.api.add_button("Horse").on_click(lambda _: self.state.load_horse())
-                self.api.add_button("Vase").on_click(lambda _: self.state.load_vase())
+                bear_btn = self.api.add_button("Bear")
+                @bear_btn.on_click
+                def _(_):
+                    self.state.load_bear()
+                    self.state.active_animation = EXAMPLE_BREATHING
+
+                vase_btn = self.api.add_button("Vase")
+                @vase_btn.on_click
+                def _(_):
+                    self.state.load_vase()
+                    self.state.active_animation = EXAMPLE_LAVA_MELTING
+
+                horse_btn = self.api.add_button("Horse")
+                @horse_btn.on_click
+                def _(_):
+                    self.state.load_horse()
+                    self.state.active_animation = EXAMPLE_LSD
+
+                bulldozer_btn = self.api.add_button("Bulldozer")
+                @bulldozer_btn.on_click
+                def _(_):
+                    self.state.load_bulldozer()
+                    self.state.active_animation = EXAMPLE_ACCELERATION
+
+
         ## Render Tab
         with self.tab_group.add_tab("Render"):
             self.render_btn = self.api.add_button("Render", icon=viser.Icon.PHOTO)
@@ -289,6 +308,7 @@ class Gui(Observer):
             @explosion_btn.on_click
             def _(_) -> None:
                 popout.close()
+                self.state.load_vase()
                 self.state.active_animation = EXAMPLE_EXPLOSION
 
             lsd_btn = self.api.add_button(
@@ -298,6 +318,7 @@ class Gui(Observer):
             @lsd_btn.on_click
             def _(_) -> None:
                 popout.close()
+                self.state.load_horse()
                 self.state.active_animation = EXAMPLE_LSD
 
             acceleration_btn = self.api.add_button(
@@ -307,6 +328,7 @@ class Gui(Observer):
             @acceleration_btn.on_click
             def _(_) -> None:
                 popout.close()
+                self.state.load_bulldozer()
                 self.state.active_animation = EXAMPLE_ACCELERATION
 
             breathing_btn = self.api.add_button(
@@ -316,6 +338,7 @@ class Gui(Observer):
             @breathing_btn.on_click
             def _(_) -> None:
                 popout.close()
+                self.state.load_bear()
                 self.state.active_animation = EXAMPLE_BREATHING
 
             color_shift_btn = self.api.add_button(
@@ -325,6 +348,7 @@ class Gui(Observer):
             @color_shift_btn.on_click
             def _(_) -> None:
                 popout.close()
+                self.state.load_bulldozer()
                 self.state.active_animation = EXAMPLE_COLOR_SHIFT
 
             lava_melting_btn = self.api.add_button(
@@ -334,6 +358,7 @@ class Gui(Observer):
             @lava_melting_btn.on_click
             def _(_) -> None:
                 popout.close()
+                self.state.load_vase()
                 self.state.active_animation = EXAMPLE_LAVA_MELTING
 
             self._add_close_popout_btn(popout)
